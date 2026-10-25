@@ -11,9 +11,15 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="logo">AI OFFICE</span><span class="mode" id="mode">IDLE</span></div>
-    <form class="run" id="run-form">
-      <input id="topic" type="text" placeholder="조사할 주제를 입력하세요" value="멀티 AI 에이전트 프레임워크" autocomplete="off">
-      <button type="submit" id="run-btn" class="primary">▶ 실행</button>
+    <div class="project">
+      <select id="project" aria-label="사업 선택"></select>
+      <button type="button" id="project-new" title="새 사업">＋</button>
+      <button type="button" id="project-rename" title="사업 이름 바꾸기">✎</button>
+      <button type="button" id="project-delete" title="사업 삭제">🗑</button>
+    </div>
+    <form class="run" id="order-form">
+      <textarea id="instruction" rows="1" placeholder="팀장에게 업무 지시 (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
+      <button type="submit" id="order-btn" class="primary">📨 지시</button>
     </form>
     <div class="replay">
       <select id="recording" aria-label="녹화 선택"></select>
@@ -22,15 +28,19 @@
       </select>
       <button type="button" id="replay-btn">⟲ 재생</button>
     </div>
+    <button type="button" id="stop-btn" class="danger" hidden>■ 중지</button>
     <div class="conn" id="conn"><span class="dot"></span><span>연결 중</span></div>
   </header>
 
   <p class="hint" id="hint" hidden></p>
+  <p class="hint info" id="flash" hidden></p>
+  <p class="hint info" id="away" hidden></p>
 
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="office" class="active">🏢 Office</button>
-    <button role="tab" data-tab="tasks">📋 Tasks <span class="badge" id="tasks-badge">0/0</span></button>
+    <button role="tab" data-tab="tasks">📋 업무 <span class="badge" id="tasks-badge">0</span></button>
     <button role="tab" data-tab="report">📄 Report <span class="badge new" id="report-badge" hidden>NEW</span></button>
+    <button type="button" id="edit-btn" class="edit-btn">🛠 팀 편집</button>
   </nav>
 
   <main>
@@ -47,15 +57,31 @@
           <canvas id="office" width="384" height="232"></canvas>
           <div class="overlay" id="overlay"></div>
         </div>
-        <aside class="feed">
-          <h2>ACTIVITY</h2>
-          <ol id="feed"></ol>
+        <aside class="side">
+          <div class="feed" id="feed-box">
+            <h2>ACTIVITY</h2>
+            <ol id="feed"></ol>
+          </div>
+          <div class="editor" id="editor" hidden>
+            <div class="editor-top">
+              <h2>TEAM</h2>
+              <span class="editor-state" id="editor-state">저장됨</span>
+            </div>
+            <p class="editor-note">캐릭터를 끌어 자리를 바꾸고, 클릭해서 설정을 고칩니다. 팀원을 다른 방으로 끌면 그 팀으로 옮겨 가고, 팀장석으로 끌면 그 사람이 팀장이 됩니다(역할 설정은 자리에 남음). 글에 <code>{topic}</code>(업무 지시 내용), <code>{current_year}</code>를 쓸 수 있습니다.</p>
+            <div id="editor-fields"></div>
+            <p class="editor-msg" id="editor-msg"></p>
+            <div class="editor-actions">
+              <button type="button" id="editor-save" class="primary" disabled>💾 저장</button>
+              <button type="button" id="editor-revert" disabled>↺ 되돌리기</button>
+              <button type="button" id="editor-default">기본 구성</button>
+            </div>
+          </div>
         </aside>
       </div>
     </section>
 
     <section class="panel" data-panel="tasks">
-      <div id="task-list" class="task-list"><p class="empty">아직 작업이 없습니다. 주제를 실행하거나 녹화를 재생하세요.</p></div>
+      <div id="task-list" class="task-list"></div>
     </section>
 
     <section class="panel" data-panel="report">

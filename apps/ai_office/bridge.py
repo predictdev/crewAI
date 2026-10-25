@@ -96,11 +96,15 @@ class OfficeEventListener(BaseEventListener):
 
         @crewai_event_bus.on(ToolUsageStartedEvent)
         def _(source: Any, event: ToolUsageStartedEvent) -> None:
+            args = event.tool_args if isinstance(event.tool_args, dict) else {}
             self._emit(
                 "tool_started",
                 agent=_agent_id(event),
                 tool=event.tool_name,
                 args=_preview(event.tool_args, 200),
+                # Delegation tools: who gets the work, and what they are asked.
+                coworker=args.get("coworker"),
+                request=_preview(args.get("task") or args.get("question"), 300) or None,
             )
 
         @crewai_event_bus.on(ToolUsageFinishedEvent)

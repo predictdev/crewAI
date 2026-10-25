@@ -1,3 +1,5 @@
 runs/
 output/
 .env
+team.json
+data/
