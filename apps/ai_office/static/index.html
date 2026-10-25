@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Office</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">AI OFFICE</span><span class="mode" id="mode">IDLE</span></div>
+    <form class="run" id="run-form">
+      <input id="topic" type="text" placeholder="조사할 주제를 입력하세요" value="멀티 AI 에이전트 프레임워크" autocomplete="off">
+      <button type="submit" id="run-btn" class="primary">▶ 실행</button>
+    </form>
+    <div class="replay">
+      <select id="recording" aria-label="녹화 선택"></select>
+      <select id="speed" aria-label="재생 속도">
+        <option value="1">1x</option><option value="2" selected>2x</option><option value="4">4x</option>
+      </select>
+      <button type="button" id="replay-btn">⟲ 재생</button>
+    </div>
+    <div class="conn" id="conn"><span class="dot"></span><span>연결 중</span></div>
+  </header>
+
+  <p class="hint" id="hint" hidden></p>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="office" class="active">🏢 Office</button>
+    <button role="tab" data-tab="tasks">📋 Tasks <span class="badge" id="tasks-badge">0/0</span></button>
+    <button role="tab" data-tab="report">📄 Report <span class="badge new" id="report-badge" hidden>NEW</span></button>
+  </nav>
+
+  <main>
+    <section class="panel active" data-panel="office">
+      <div class="stats">
+        <div class="stat"><span>STAFF</span><b id="stat-staff">0</b></div>
+        <div class="stat"><span>WORKING</span><b id="stat-working">0</b></div>
+        <div class="stat"><span>IN PROGRESS</span><b id="stat-progress">0</b></div>
+        <div class="stat"><span>DONE</span><b id="stat-done">0/0</b></div>
+        <div class="stat"><span>TIME</span><b id="stat-time">00:00</b></div>
+      </div>
+      <div class="office-layout">
+        <div class="stage" id="stage">
+          <canvas id="office" width="384" height="232"></canvas>
+          <div class="overlay" id="overlay"></div>
+        </div>
+        <aside class="feed">
+          <h2>ACTIVITY</h2>
+          <ol id="feed"></ol>
+        </aside>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="tasks">
+      <div id="task-list" class="task-list"><p class="empty">아직 작업이 없습니다. 주제를 실행하거나 녹화를 재생하세요.</p></div>
+    </section>
+
+    <section class="panel" data-panel="report">
+      <div class="report-bar">
+        <span id="report-meta"></span>
+        <button type="button" id="download-btn" disabled>⬇ .md 저장</button>
+      </div>
+      <article id="report" class="report"><p class="empty">리포트가 완성되면 여기에 표시됩니다.</p></article>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+  <script src="sprites.js"></script>
+  <script src="office.js"></script>
+</body>
+</html>
