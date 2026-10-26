@@ -24,6 +24,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSoc
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import auth
 import store
 from store import Order, Project
 from team import MAX_MEMBERS, MODELS, TOOLS, Team, default_team
@@ -37,6 +38,7 @@ STOP_GRACE = 3.0  # seconds to wait after SIGTERM before SIGKILL
 
 load_dotenv(CREW_DIR / ".env")
 load_dotenv(APP_DIR / ".env")
+load_dotenv(APP_DIR.parent.parent / ".env")  # Supabase (login)
 
 
 class Office:
@@ -117,7 +119,7 @@ class Office:
                 json.dumps(
                     {
                         "order": order.model_dump(),
-                        "project": {"id": project.id, "name": project.name},
+                        "project": {"id": project.id, "name": project.name, "goal": project.goal},
                         "team": project.team.model_dump(),
                     },
                     ensure_ascii=False,
@@ -235,18 +237,26 @@ async def revalidate_static(request: Request, call_next: Any) -> Response:
     return response
 
 
+app.middleware("http")(auth.require_login)
+app.include_router(auth.router)
+
+
 # ---------- status and recordings ----------
 
 
-def _recordings() -> dict[str, tuple[Path, str]]:
-    found = {f"sample/{p.stem}": (p, f"샘플: {p.stem}") for p in sorted(SAMPLES_DIR.glob("*.jsonl"))}
+def _recordings() -> dict[str, tuple[Path, str, str | None]]:
+    """name -> (events file, label, business id or None for samples and old runs)"""
+    found = {
+        f"sample/{p.stem}": (p, f"샘플: {p.stem}", None) for p in sorted(SAMPLES_DIR.glob("*.jsonl"))
+    }
     for p in sorted(RUNS_DIR.glob("*/events.jsonl"), reverse=True):
-        label = f"실행: {p.parent.name}"
+        label, project_id = f"실행: {p.parent.name}", None
         meta = p.parent / "order.json"
         if meta.exists():
             info = json.loads(meta.read_text(encoding="utf-8"))
             label = f"{info['project']['name']} · {info['order']['instruction'][:28]}"
-        found[f"run/{p.parent.name}"] = (p, label)
+            project_id = info["project"]["id"]
+        found[f"run/{p.parent.name}"] = (p, label, project_id)
     return found
 
 
@@ -262,7 +272,10 @@ async def status() -> dict[str, Any]:
     return {
         "busy": office.busy,
         "has_api_key": bool(os.getenv("ANTHROPIC_API_KEY")),
-        "recordings": [{"name": name, "label": label} for name, (_, label) in _recordings().items()],
+        "recordings": [
+            {"name": name, "label": label, "project_id": project_id}
+            for name, (_, label, project_id) in _recordings().items()
+        ],
         "current": {"order_id": current.id, "project_id": current.project_id} if current else None,
         "models": MODELS,
         "tools": TOOLS,
@@ -304,7 +317,18 @@ def _project(project_id: str) -> Project:
 
 
 def _summary(p: Project) -> dict[str, Any]:
-    return {"id": p.id, "name": p.name, "members": len(p.team.members), "created": p.created}
+    mine = [o for o in office.orders if o.project_id == p.id]
+    last = max(mine, key=lambda o: o.created, default=None)
+    count = lambda *s: sum(o.status in s for o in mine)  # noqa: E731
+    return {
+        "id": p.id,
+        "name": p.name,
+        "goal": p.goal,
+        "members": len(p.team.members),
+        "created": p.created,
+        "orders": {"done": count("done"), "waiting": count("queued", "running"), "failed": count("failed", "stopped")},
+        "last": {"instruction": last.instruction, "status": last.status, "at": last.ended or last.created} if last else None,
+    }
 
 
 @app.get("/api/projects")
@@ -314,23 +338,28 @@ async def list_projects() -> list[dict[str, Any]]:
 
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=40)
+    goal: str = Field(default="", max_length=1000)
     copy_from: str | None = None  # another business's team, or the default template
 
 
 @app.post("/api/projects")
 async def create_project(req: ProjectCreate) -> dict[str, Any]:
     team = _project(req.copy_from).team if req.copy_from else default_team()
-    return _summary(store.create_project(req.name.strip(), team))
+    return _summary(store.create_project(req.name.strip(), team, req.goal.strip()))
 
 
-class ProjectRename(BaseModel):
-    name: str = Field(min_length=1, max_length=40)
+class ProjectUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=40)
+    goal: str | None = Field(default=None, max_length=1000)
 
 
 @app.patch("/api/projects/{project_id}")
-async def rename_project(project_id: str, req: ProjectRename) -> dict[str, Any]:
+async def update_project(project_id: str, req: ProjectUpdate) -> dict[str, Any]:
     project = _project(project_id)
-    project.name = req.name.strip()
+    if req.name is not None:
+        project.name = req.name.strip()
+    if req.goal is not None:
+        project.goal = req.goal.strip()
     store.save_project(project)
     return _summary(project)
 
@@ -441,6 +470,9 @@ async def order_replay(order_id: str, req: Speed) -> dict[str, str]:
 
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
+    if not await auth.session_user(websocket.cookies.get(auth.COOKIE)):
+        await websocket.close(code=4401)
+        return
     await websocket.accept()
     await websocket.send_text(json.dumps({"kind": "history", "events": office.history}, ensure_ascii=False))
     office.clients.add(websocket)

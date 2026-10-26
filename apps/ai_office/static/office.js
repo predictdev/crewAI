@@ -519,11 +519,16 @@
     });
   }
 
-  async function openReport(order) {
+  async function loadReport(order) {
     const res = await fetch(`/api/orders/${order.id}/report`);
-    if (!res.ok) return alert("결과물을 불러오지 못했습니다.");
+    if (!res.ok) return false;
     const body = await res.json();
     reportView = { title: order.instruction, text: body.report, tokens: order.tokens };
+    return true;
+  }
+
+  async function openReport(order) {
+    if (!(await loadReport(order))) return alert("결과물을 불러오지 못했습니다.");
     renderReport();
     showTab("report");
   }
@@ -1150,6 +1155,7 @@
       const ev = JSON.parse(msg.data);
       if (ev.kind === "orders") {
         loadOrders();
+        loadProjects();
         refreshStatus();
         return;
       }
@@ -1167,6 +1173,7 @@
     ws.onclose = () => {
       conn.classList.remove("on");
       conn.lastChild.textContent = "재연결 중";
+      fetch("/api/me"); // back to the login page if the session ended
       setTimeout(() => connect(Math.min(delay * 2, 8000)), delay);
     };
   }
@@ -1175,19 +1182,14 @@
     try {
       status = await (await fetch("/api/status")).json();
       meta = { models: status.models, tools: status.tools, max_members: status.max_members };
-      const select = $("#recording");
-      const current = select.value;
-      select.innerHTML = "";
-      status.recordings.forEach((r) => select.add(new Option(r.label, r.name)));
-      if (status.recordings.some((r) => r.name === current)) select.value = current;
+      renderRecordings();
       $("#order-btn").disabled = !status.has_api_key;
-      $("#replay-btn").disabled = status.busy || !status.recordings.length;
       $("#stop-btn").hidden = !status.busy;
       $("#stop-btn").disabled = false;
       const hint = $("#hint");
       hint.hidden = status.has_api_key;
       hint.textContent = "ANTHROPIC_API_KEY가 없어 업무 지시는 꺼져 있습니다. 녹화 재생은 사용할 수 있습니다.";
-      renderProjectSelect();
+      renderBusinesses();
       renderStats();
     } catch {
       /* server restarting; the websocket reconnect will retry */
@@ -1196,15 +1198,60 @@
 
   // ---------- businesses and instructions ----------
 
-  function renderProjectSelect() {
-    const select = $("#project");
-    select.innerHTML = "";
+  // The left list: every business with its goal and latest instruction. Picking one
+  // switches the whole screen (team, office, orders, report, recordings) to it.
+  function renderBusinesses() {
+    const list = $("#biz-list");
+    list.innerHTML = "";
     projects.forEach((p) => {
       const working = status.current?.project_id === p.id;
-      select.add(new Option(`${working ? "● " : ""}${p.name} (${p.members}명)`, p.id));
+      const li = document.createElement("li");
+      li.className = `biz-item${p.id === selectedProject ? " active" : ""}${working ? " working" : ""}`;
+      li.tabIndex = 0;
+      li.innerHTML = `<div class="biz-name"><b></b><span class="muted"></span></div><p class="biz-goal"></p><div class="biz-last muted"></div><div class="biz-meta"></div>`;
+      li.querySelector("b").textContent = `${working ? "● " : ""}${p.name}`;
+      li.querySelector(".biz-name .muted").textContent = `${p.members + 1}명`;
+      const goal = li.querySelector(".biz-goal");
+      goal.textContent = p.goal || "사업 목표 없음";
+      goal.classList.toggle("none", !p.goal);
+      const last = li.querySelector(".biz-last");
+      if (p.last) {
+        const line = p.last.instruction.split("\n")[0];
+        last.textContent = `최근 지시 · ${clock(p.last.at)} · ${ORDER_LABELS[p.last.status]}\n${line.length > 44 ? `${line.slice(0, 44)}…` : line}`;
+      } else {
+        last.textContent = "아직 지시 없음";
+      }
+      const meta = li.querySelector(".biz-meta");
+      const o = p.orders;
+      meta.innerHTML = [
+        o.waiting ? `<span class="pill in_progress">대기·진행 ${o.waiting}</span>` : "",
+        o.done ? `<span class="pill done">완료 ${o.done}</span>` : "",
+        o.failed ? `<span class="pill failed">실패·중지 ${o.failed}</span>` : "",
+      ].join("");
+      if (p.id === selectedProject) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "biz-edit";
+        btn.textContent = "✎ 이름·목표";
+        btn.addEventListener("click", (e) => { e.stopPropagation(); openBizDialog(p); });
+        meta.append(btn);
+      }
+      li.addEventListener("click", () => p.id !== selectedProject && switchProject(p.id));
+      li.addEventListener("keydown", (e) => { if (e.key === "Enter") li.click(); });
+      list.append(li);
     });
-    select.value = selectedProject;
-    $("#project-delete").disabled = projects.length <= 1;
+  }
+
+  function renderRecordings() {
+    const select = $("#recording");
+    const current = select.value;
+    const mine = status.recordings.filter((r) => r.project_id === selectedProject);
+    const shared = status.recordings.filter((r) => !r.project_id); // samples and runs from before businesses
+    select.innerHTML = "";
+    [...mine, ...shared].forEach((r) => select.add(new Option(r.label, r.name)));
+    if (renderRecordings.project === selectedProject && [...select.options].some((o) => o.value === current)) select.value = current;
+    renderRecordings.project = selectedProject;
+    $("#replay-btn").disabled = status.busy || !select.options.length;
   }
 
   async function loadProjects() {
@@ -1214,7 +1261,7 @@
       try { saved = localStorage.getItem("office.project"); } catch { /* storage blocked */ }
       selectedProject = projects.some((p) => p.id === saved) ? saved : projects[0].id;
     }
-    renderProjectSelect();
+    renderBusinesses();
   }
 
   async function loadTeam() {
@@ -1228,40 +1275,62 @@
     renderOrders();
   }
 
+  // Report, recordings and the instruction box follow the selected business.
+  async function showProjectState() {
+    const p = projects.find((x) => x.id === selectedProject);
+    if (!p) return;
+    $("#instruction").placeholder = `'${p.name}' 팀장에게 업무 지시 (Enter 보내기 · Shift+Enter 줄바꿈)`;
+    renderRecordings();
+    reportView = null;
+    const latest = orders.find((o) => o.status === "done"); // newest first
+    if (!(runVisible() && state.report) && latest) await loadReport(latest);
+    renderReport();
+  }
+
   async function switchProject(id) {
-    if (!closeEditor()) {
-      $("#project").value = selectedProject;
-      return;
-    }
+    if (!closeEditor()) return;
     selectedProject = id;
     try { localStorage.setItem("office.project", id); } catch { /* storage blocked */ }
-    reportView = null;
     await Promise.all([loadTeam(), loadOrders()]);
-    renderProjectSelect();
-    renderReport();
+    renderBusinesses();
+    await showProjectState();
     renderAll();
   }
 
-  $("#project").addEventListener("change", (e) => switchProject(e.target.value));
-  $("#project-new").addEventListener("click", async () => {
-    const name = prompt("새 사업 이름 (예: 마케팅, 학원 영업, 영상 제작)");
-    if (!name?.trim()) return;
-    const copy = confirm(`지금 사업의 팀을 그대로 복사할까요?\n취소를 누르면 기본 팀(리서처·라이터·리뷰어)으로 시작합니다.`);
-    const created = await api("/api/projects", "POST", { name: name.trim(), copy_from: copy ? selectedProject : null });
-    if (!created) return;
+  // One dialog for a new business and for a business's name and goal.
+  const bizDialog = $("#biz-dialog");
+  let bizEditing = null; // the business being edited, or null for a new one
+  function openBizDialog(project = null) {
+    bizEditing = project;
+    $("#biz-dialog-title").textContent = project ? "BUSINESS" : "NEW BUSINESS";
+    $("#biz-name").value = project?.name || "";
+    $("#biz-goal").value = project?.goal || "";
+    $("#biz-copy").checked = false;
+    $("#biz-copy-row").hidden = Boolean(project);
+    $("#biz-delete").hidden = !project;
+    $("#biz-delete").disabled = projects.length <= 1;
+    bizDialog.showModal();
+    $("#biz-name").focus();
+  }
+  $("#project-new").addEventListener("click", () => openBizDialog());
+  $("#biz-cancel").addEventListener("click", () => bizDialog.close());
+  $("#biz-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { name: $("#biz-name").value.trim(), goal: $("#biz-goal").value.trim() };
+    if (!body.name) return $("#biz-name").focus();
+    const saved = bizEditing
+      ? await api(`/api/projects/${bizEditing.id}`, "PATCH", body)
+      : await api("/api/projects", "POST", { ...body, copy_from: $("#biz-copy").checked ? selectedProject : null });
+    if (!saved) return;
+    bizDialog.close();
     await loadProjects();
-    switchProject(created.id);
+    if (!bizEditing) await switchProject(saved.id);
+    else showProjectState();
   });
-  $("#project-rename").addEventListener("click", async () => {
-    const current = projects.find((p) => p.id === selectedProject);
-    const name = prompt("사업 이름", current?.name || "");
-    if (!name?.trim() || !(await api(`/api/projects/${selectedProject}`, "PATCH", { name: name.trim() }))) return;
-    loadProjects();
-  });
-  $("#project-delete").addEventListener("click", async () => {
-    const current = projects.find((p) => p.id === selectedProject);
-    if (!confirm(`'${current?.name}' 사업을 삭제할까요? 팀 설정이 지워지고, 대기 중인 지시는 취소됩니다.`)) return;
-    if (!(await api(`/api/projects/${selectedProject}`, "DELETE"))) return;
+  $("#biz-delete").addEventListener("click", async () => {
+    if (!confirm(`'${bizEditing.name}' 사업을 삭제할까요? 팀 설정이 지워지고, 대기 중인 지시는 취소됩니다.`)) return;
+    if (!(await api(`/api/projects/${bizEditing.id}`, "DELETE"))) return;
+    bizDialog.close();
     await loadProjects();
     switchProject(projects[0].id);
   });
@@ -1324,14 +1393,15 @@
   document.querySelectorAll(".tabs button[data-tab]").forEach((btn) => btn.addEventListener("click", () => showTab(btn.dataset.tab)));
 
   async function start() {
+    resetState();
     await refreshStatus();
     try {
       await loadProjects();
       await Promise.all([loadTeam(), loadOrders()]);
+      await showProjectState();
     } catch {
       buildIdle(); /* fall back to the built-in roster */
     }
-    resetState();
     renderAll();
     setInterval(renderStats, 500);
     requestAnimationFrame(draw);

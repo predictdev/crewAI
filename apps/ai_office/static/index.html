@@ -11,12 +11,6 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="logo">AI OFFICE</span><span class="mode" id="mode">IDLE</span></div>
-    <div class="project">
-      <select id="project" aria-label="사업 선택"></select>
-      <button type="button" id="project-new" title="새 사업">＋</button>
-      <button type="button" id="project-rename" title="사업 이름 바꾸기">✎</button>
-      <button type="button" id="project-delete" title="사업 삭제">🗑</button>
-    </div>
     <form class="run" id="order-form">
       <textarea id="instruction" rows="1" placeholder="팀장에게 업무 지시 (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
       <button type="submit" id="order-btn" class="primary">📨 지시</button>
@@ -30,12 +24,35 @@
     </div>
     <button type="button" id="stop-btn" class="danger" hidden>■ 중지</button>
     <div class="conn" id="conn"><span class="dot"></span><span>연결 중</span></div>
+    <div class="account">
+      <button type="button" id="members-btn" hidden>👥 회원 <span class="badge new" id="members-badge" hidden>0</span></button>
+      <span class="user-name" id="user-name"></span>
+      <button type="button" id="logout-btn">로그아웃</button>
+    </div>
   </header>
+
+  <dialog class="members" id="members">
+    <div class="members-top">
+      <h2>MEMBERS</h2>
+      <button type="button" id="members-close" aria-label="닫기">✕</button>
+    </div>
+    <p class="editor-note">가입 신청을 승인하면 그 사람에게 문자로 알리고, 휴대폰 번호로 로그인할 수 있게 됩니다. 이용 중지하면 바로 로그아웃됩니다.</p>
+    <ul class="members-list" id="members-list"></ul>
+  </dialog>
 
   <p class="hint" id="hint" hidden></p>
   <p class="hint info" id="flash" hidden></p>
   <p class="hint info" id="away" hidden></p>
 
+  <div class="workspace">
+  <aside class="biz" aria-label="사업 목록">
+    <div class="biz-top">
+      <h2>BUSINESS</h2>
+      <button type="button" id="project-new" title="새 사업">＋ 새 사업</button>
+    </div>
+    <ul class="biz-list" id="biz-list"></ul>
+  </aside>
+  <div class="workspace-main">
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="office" class="active">🏢 Office</button>
     <button role="tab" data-tab="tasks">📋 업무 <span class="badge" id="tasks-badge">0</span></button>
@@ -92,9 +109,30 @@
       <article id="report" class="report"><p class="empty">리포트가 완성되면 여기에 표시됩니다.</p></article>
     </section>
   </main>
+  </div>
+  </div>
+
+  <dialog class="members biz-dialog" id="biz-dialog">
+    <form method="dialog" id="biz-form">
+      <div class="members-top">
+        <h2 id="biz-dialog-title">NEW BUSINESS</h2>
+        <button type="button" id="biz-cancel" aria-label="닫기">✕</button>
+      </div>
+      <label>사업 이름 <input id="biz-name" maxlength="40" required placeholder="예: 학원 영업, 마케팅, 영상 제작"></label>
+      <label>사업 목표 <small>팀장이 모든 지시를 이 목표에 맞춰 해석합니다</small>
+        <textarea id="biz-goal" rows="4" maxlength="1000" placeholder="예: bauhausedu.com을 올해 안에 학원 100곳이 쓰게 한다. 대상은 수도권 미술학원 원장."></textarea>
+      </label>
+      <label class="check" id="biz-copy-row"><input type="checkbox" id="biz-copy"> 지금 사업의 팀을 복사 (끄면 기본 팀: 리서처·라이터·리뷰어)</label>
+      <div class="biz-dialog-actions">
+        <button type="button" id="biz-delete" class="danger-outline">🗑 사업 삭제</button>
+        <button type="submit" class="primary" id="biz-save">저장</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+  <script src="account.js"></script>
   <script src="sprites.js"></script>
   <script src="office.js"></script>
 </body>

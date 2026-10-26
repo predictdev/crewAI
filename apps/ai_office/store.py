@@ -31,6 +31,7 @@ OrderStatus = Literal["queued", "running", "done", "failed", "stopped", "cancell
 class Project(BaseModel):
     id: str = Field(pattern=r"^[a-z0-9_-]{1,40}$")
     name: str = Field(min_length=1, max_length=40)
+    goal: str = Field(default="", max_length=1000)  # what the business is for; the lead reads it
     team: Team
     created: float = Field(default_factory=time.time)
 
@@ -84,8 +85,8 @@ def delete_project(project_id: str) -> None:
     _project_path(project_id).unlink(missing_ok=True)
 
 
-def create_project(name: str, team: Team | None = None) -> Project:
-    project = Project(id=new_id(), name=name, team=team or default_team())
+def create_project(name: str, team: Team | None = None, goal: str = "") -> Project:
+    project = Project(id=new_id(), name=name, goal=goal, team=team or default_team())
     save_project(project)
     return project
 

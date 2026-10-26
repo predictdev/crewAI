@@ -17,9 +17,40 @@ python3 -m uv pip install --python .venv/bin/python -r apps/ai_office/requiremen
 
 http://localhost:8765 에 접속합니다. API 키는 `examples/research_crew/.env`의 `ANTHROPIC_API_KEY`를 사용합니다.
 
+## 로그인과 회원
+
+로그인한 사람만 사무실에 들어갈 수 있습니다.
+
+- **회원가입**: 로그인 화면의 회원가입 탭에서 이름·휴대폰 번호·메모로 신청합니다. 신청만으로는 로그인할 수 없습니다.
+- **승인**: 관리자가 상단 **👥 회원**에서 승인하면 신청자에게 문자로 알립니다. 승인 대기 수가 버튼에 표시됩니다. **이용 중지**하면 바로 로그아웃됩니다.
+- **로그인**: 휴대폰 번호를 넣고 **인증번호 받기** → 문자로 받은 6자리를 입력합니다. 인증번호는 5분 동안 유효하고 5번 틀리면 다시 받아야 합니다(1분에 한 번, 1시간에 5번까지). 로그인은 30일 유지됩니다.
+- **첫 관리자**: 처음 가입한 사람은 Supabase에서 직접 승인합니다.
+  `update "multiAi_users" set status = 'approved', is_admin = true where phone = '01012345678';`
+
+회원 정보는 Supabase(`predict-service`)의 `multiAi_*` 테이블에 있고, Edge Function만 읽고 씁니다(RLS, anon 권한 없음). 서버는 저장소 루트 `.env`의 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`로 `multiai-auth` 함수를 부릅니다.
+
+| Supabase | 내용 |
+| --- | --- |
+| `multiAi_users` | 회원: 번호, 이름, 메모, 상태(pending/approved/rejected), 관리자 여부 |
+| `multiAi_sms_codes` | 인증번호(해시), 만료, 시도 횟수 |
+| `multiAi_sessions` | 로그인 세션(토큰 해시), 만료 |
+| `multiAi_sms_log` | 문자 발송 기록(번호 속 숫자는 가림) |
+| `multiai-auth` 함수 | 가입·인증번호·로그인·세션 확인·회원 승인 |
+| `multiai-send-sms` 함수 | 문자 발송(`bauhaus-send-sms`에서 복사). service role 키로만 호출 |
+
+스키마는 `supabase/migrations/`, 함수 코드는 `supabase/functions/`에 있습니다. 배포:
+
+```bash
+cd apps/ai_office
+supabase functions deploy multiai-auth --project-ref woevgjaavqtecdhkxnhl --use-api --no-verify-jwt
+supabase functions deploy multiai-send-sms --project-ref woevgjaavqtecdhkxnhl --use-api --no-verify-jwt
+```
+
 ## 사업과 업무 지시
 
-- **사업**: 상단 목록에서 고릅니다. **＋**로 새 사업을 만들 때 지금 사업의 팀을 복사하거나 기본 팀으로 시작합니다. **✎** 이름 바꾸기, **🗑** 삭제.
+- **사업**: 왼쪽 목록에 모든 사업이 사업 목표, 최근 지시, 완료·대기 수와 함께 나옵니다. 사업을 고르면 화면 전체가 그 사업으로 바뀝니다: 팀과 사무실, 📋 업무 목록, 📄 Report(그 사업의 최근 결과물), 재생 목록(그 사업의 실행 기록), 입력칸. 마지막으로 고른 사업은 다시 들어왔을 때 그대로 열립니다.
+- **사업 만들기·고치기**: **＋ 새 사업**으로 이름과 사업 목표를 넣어 만듭니다(지금 팀 복사 또는 기본 팀). 고른 사업의 **✎ 이름·목표**에서 이름·목표를 고치거나 사업을 삭제합니다.
+- **사업 목표**: 팀장은 모든 지시를 그 사업의 목표에 맞춰 해석합니다. 구체적으로 적을수록 지시가 짧아도 됩니다.
 - **업무 지시**: 입력칸에 하고 싶은 일을 그대로 쓰고 **📨 지시**(Enter)를 누릅니다. 예: "학원 원장 대상 서비스 소개 제안서 초안 써줘", "경쟁 서비스 5곳 가격 비교표 만들어줘".
 - **대기열**: 지시는 모든 사업을 통틀어 하나씩 차례대로 처리됩니다. 여러 개를 넣어 두면 앞의 일이 끝나는 대로 이어서 시작합니다. 대기 중인 지시는 📋 업무 탭에서 취소할 수 있습니다.
 - **결과**: 끝난 지시는 📋 업무 탭에서 **📄 결과 보기**, **⟲ 재생**(비용 없이 다시 보기), **↻ 다시 지시**를 할 수 있습니다.
@@ -53,10 +84,13 @@ http://localhost:8765 에 접속합니다. API 키는 `examples/research_crew/.e
 
 | 파일 | 역할 |
 | --- | --- |
+| `auth.py` | 로그인 확인 미들웨어, 가입·로그인·회원 승인 API (`multiai-auth` 함수 호출) |
 | `bridge.py` | crewAI 이벤트 버스를 구독해 사무실 이벤트(JSON)로 변환 |
 | `server.py` | FastAPI 서버. 사업·팀·업무 지시 API, 대기열 실행·중지, 녹화 재생, WebSocket 중계 |
 | `store.py` | 사업과 업무 지시 저장 (`data/`) |
 | `worker.py` | 지시 하나를 별도 프로세스에서 실행. 팀장이 일을 나눠 팀원에게 맡기는 크루를 만들고, 이벤트를 stdout(JSON 줄)으로 전달 |
 | `team.py` | 팀 설정 스키마·검증 |
 | `static/sprites.js` | 픽셀아트 사무실·캐릭터 그리기 (외부 이미지 없음) |
+| `static/login.html`, `login.js` | 로그인·회원가입 화면 |
+| `static/account.js` | 상단 사용자·로그아웃, 회원 승인 창 |
 | `static/office.js` | 이벤트 → 화면 상태, 말풍선, 업무·Report 탭, 사업 전환, 팀 편집 |

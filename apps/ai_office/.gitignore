@@ -3,3 +3,4 @@ output/
 .env
 team.json
 data/
+supabase/.temp/

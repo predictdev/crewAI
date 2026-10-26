@@ -83,7 +83,7 @@ def _org_chart(team: Team) -> str:
     return "\n".join(f"- {name}\n  " + "\n  ".join(people) for name, people in teams.items())
 
 
-def build_crew(team: Team) -> tuple[Crew, Agent, list[Agent]]:
+def build_crew(team: Team, goal: str = "") -> tuple[Crew, Agent, list[Agent]]:
     """One task (the instruction) run by the manager, who splits it and delegates to members."""
     # Both sides learn the org chart and each member's specialty from their backstory.
     manager = _agent(
@@ -103,7 +103,12 @@ def build_crew(team: Team) -> tuple[Crew, Agent, list[Agent]]:
         )
         for m in team.members
     ]
-    task = Task(name="order", description=ORDER_DESCRIPTION, expected_output=ORDER_OUTPUT)
+    description = ORDER_DESCRIPTION
+    if goal:
+        # Braces would read as crewAI placeholders.
+        goal = goal.replace("{", "(").replace("}", ")")
+        description += f"\n\n이 사업의 목표:\n{goal}\n\n지시를 이 사업의 목표에 맞게 해석하고 수행하라."
+    task = Task(name="order", description=description, expected_output=ORDER_OUTPUT)
     crew = Crew(
         agents=members,
         tasks=[task],
@@ -134,7 +139,7 @@ def main(run_dir: Path) -> None:
     inputs = {"topic": instruction, "current_year": str(datetime.now().year)}
     try:
         team = Team.model_validate(spec["team"])
-        crew, manager, members = build_crew(team)
+        crew, manager, members = build_crew(team, spec["project"].get("goal", ""))
         emit(
             {
                 "kind": "roster",
