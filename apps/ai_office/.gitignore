@@ -4,3 +4,5 @@ output/
 team.json
 data/
 supabase/.temp/
+server.log
+.serve.pid

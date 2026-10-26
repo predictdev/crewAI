@@ -172,9 +172,11 @@
       }
       case "tool_finished": {
         if (!/coworker/i.test(ev.tool || "")) break;
-        const target = mgr.pending;
+        // Newer recordings name who reported, which matters when several work in parallel.
+        const target = ev.coworker ? findCoworker(ev.coworker) || mgr.pending : mgr.pending;
+        const item = state.tasks.find((t) => t.delegated && t.agent === target && t.status === "in_progress") || mgr.pendingItem;
         mgr.pending = null;
-        if (mgr.pendingItem) Object.assign(mgr.pendingItem, { status: "done", output: ev.output });
+        if (item) Object.assign(item, { status: "done", output: ev.output });
         mgr.pendingItem = null;
         mgr.status = "thinking";
         say(mgr, `🧐 ${target?.name || "팀원"}의 보고 검토 중`);
@@ -464,8 +466,9 @@
       const card = document.createElement("div");
       card.className = `task order ${order.status}`;
       card.innerHTML = `<header><h3></h3><span class="who"></span><span class="pill"></span></header><p class="instruction"></p>`;
-      const firstLine = order.instruction.split("\n")[0];
-      card.querySelector("h3").textContent = firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+      const [firstLine, ...rest] = order.instruction.split("\n");
+      const cut = firstLine.length > 60;
+      card.querySelector("h3").textContent = cut ? `${firstLine.slice(0, 60)}…` : firstLine;
       const meta = [clock(order.created)];
       if (order.started && order.ended) meta.push(minutes(order.started, order.ended));
       if (order.tokens) meta.push(`${order.tokens.toLocaleString()} 토큰`);
@@ -473,7 +476,11 @@
       const pill = card.querySelector(".pill");
       if (ORDER_PILLS[order.status]) pill.classList.add(ORDER_PILLS[order.status]);
       pill.textContent = ORDER_LABELS[order.status];
-      card.querySelector(".instruction").textContent = order.instruction;
+      // The title already shows the first line; below it only what the title left out.
+      const more = card.querySelector(".instruction");
+      more.textContent = cut ? order.instruction : rest.join("\n").trim();
+      more.hidden = !more.textContent;
+      if (order.resume_of) card.querySelector(".who").textContent += " · ↪ 중단된 지시를 이어서 실행";
       if (order.error) card.append(note(`⚠️ ${order.error}`));
 
       if (order.status === "running" && state.orderId === order.id) {
@@ -502,16 +509,18 @@
       };
       if (order.status === "queued") actions.append(button("취소", "대기열에서 뺍니다", () => api(`/api/orders/${order.id}`, "DELETE")));
       if (order.status === "running") {
-        actions.append(
-          button("🏢 사무실에서 보기", "", () => showTab("office")),
-          button("■ 중지", "", () => api("/api/stop", "POST"), { cls: "danger-outline" }),
-        );
+        actions.append(button("🏢 사무실에서 보기", "", () => showTab("office")));
       }
       if (order.status === "done") actions.append(button("📄 결과 보기", "", () => openReport(order), { cls: "primary" }));
       if (order.run && order.status !== "running") {
         actions.append(button("⟲ 재생", "이 업무가 진행된 모습을 다시 봅니다 (비용 없음)", () => {
           api(`/api/orders/${order.id}/replay`, "POST", { speed: Number($("#speed").value) }).then((ok) => ok && showTab("office"));
         }));
+      }
+      if (["failed", "stopped"].includes(order.status)) {
+        actions.append(button("▶ 이어서 실행", "팀원들이 이미 끝낸 일은 그대로 쓰고, 남은 일만 이어서 합니다", async () => {
+          if (await api(`/api/orders/${order.id}/resume`, "POST")) flash("▶ 이어서 실행을 대기열에 넣었습니다. 끝난 팀원 결과는 팀장에게 함께 전달됩니다.");
+        }, { cls: "primary" }));
       }
       if (["failed", "stopped", "cancelled", "done"].includes(order.status)) actions.append(button("↻ 다시 지시", "같은 내용을 입력칸에 넣습니다", again));
       if (actions.children.length) card.append(actions);
@@ -563,16 +572,35 @@
     const end = sc.endedAt || Date.now() / 1000;
     const secs = start ? Math.max(0, Math.round(end - start)) : 0;
     $("#stat-time").textContent = `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
+    renderNow();
+  }
+
+  // The one place that says what the office is doing now, with the stop button.
+  function renderNow() {
+    const now = $("#now");
+    now.hidden = !status.busy;
+    if (!status.busy) return;
     const mode = $("#mode");
-    const running = sc === state && state.startedAt && !state.endedAt;
-    mode.textContent = edit ? "EDIT" : running ? (state.mode === "replay" ? "REPLAY" : "LIVE") : sc === state && state.endedAt ? "DONE" : "IDLE";
-    mode.className = `mode ${edit ? "edit" : running ? state.mode : ""}`;
-    const other = status.current && status.current.project_id !== selectedProject;
-    const away = $("#away");
-    away.hidden = !other;
-    if (other) {
-      const name = projects.find((p) => p.id === status.current.project_id)?.name || "다른 사업";
-      away.textContent = `⏳ 지금은 '${name}' 사업이 일하는 중입니다. 이 사업의 지시는 그다음 차례대로 처리됩니다.`;
+    const go = $("#now-go");
+    const current = status.current;
+    const other = current && current.project_id !== selectedProject;
+    go.hidden = !other;
+    if (!current) {
+      mode.textContent = "REPLAY";
+      mode.className = "mode replay";
+      $("#now-text").textContent = "지난 업무를 다시 보는 중입니다.";
+    } else if (other) {
+      const name = projects.find((p) => p.id === current.project_id)?.name || "다른 사업";
+      mode.textContent = "BUSY";
+      mode.className = "mode";
+      go.dataset.project = current.project_id;
+      $("#now-text").textContent = `'${name}' 사업이 일하는 중입니다. 이 사업의 지시는 그다음 차례로 처리됩니다.`;
+    } else {
+      const order = orders.find((o) => o.id === current.order_id);
+      const line = order ? order.instruction.split("\n")[0] : "";
+      mode.textContent = "LIVE";
+      mode.className = "mode live";
+      $("#now-text").textContent = `팀장이 지시를 진행하는 중${line ? ` · ${line}` : ""}`;
     }
   }
 
@@ -1184,7 +1212,6 @@
       meta = { models: status.models, tools: status.tools, max_members: status.max_members };
       renderRecordings();
       $("#order-btn").disabled = !status.has_api_key;
-      $("#stop-btn").hidden = !status.busy;
       $("#stop-btn").disabled = false;
       const hint = $("#hint");
       hint.hidden = status.has_api_key;
@@ -1224,7 +1251,8 @@
       const meta = li.querySelector(".biz-meta");
       const o = p.orders;
       meta.innerHTML = [
-        o.waiting ? `<span class="pill in_progress">대기·진행 ${o.waiting}</span>` : "",
+        // ● already marks the working business; count only what waits behind it.
+        o.waiting - working > 0 ? `<span class="pill in_progress">대기 ${o.waiting - working}</span>` : "",
         o.done ? `<span class="pill done">완료 ${o.done}</span>` : "",
         o.failed ? `<span class="pill failed">실패·중지 ${o.failed}</span>` : "",
       ].join("");
@@ -1245,13 +1273,13 @@
   function renderRecordings() {
     const select = $("#recording");
     const current = select.value;
-    const mine = status.recordings.filter((r) => r.project_id === selectedProject);
-    const shared = status.recordings.filter((r) => !r.project_id); // samples and runs from before businesses
+    // Each instruction replays from its card; this list keeps samples and runs from before businesses.
+    const shared = status.recordings.filter((r) => !r.project_id);
     select.innerHTML = "";
-    [...mine, ...shared].forEach((r) => select.add(new Option(r.label, r.name)));
-    if (renderRecordings.project === selectedProject && [...select.options].some((o) => o.value === current)) select.value = current;
-    renderRecordings.project = selectedProject;
-    $("#replay-btn").disabled = status.busy || !select.options.length;
+    shared.forEach((r) => select.add(new Option(r.label, r.name)));
+    if (shared.some((r) => r.name === current)) select.value = current;
+    $("#more-recordings").hidden = !shared.length;
+    $("#replay-btn").disabled = status.busy;
   }
 
   async function loadProjects() {
@@ -1377,8 +1405,9 @@
   });
   $("#replay-btn").addEventListener("click", () => {
     if (!closeEditor()) return;
-    api("/api/replay", "POST", { name: $("#recording").value, speed: Number($("#speed").value) });
+    api("/api/replay", "POST", { name: $("#recording").value, speed: Number($("#speed").value) }).then((ok) => ok && showTab("office"));
   });
+  $("#now-go").addEventListener("click", (e) => switchProject(e.target.dataset.project));
   $("#stop-btn").addEventListener("click", () => {
     $("#stop-btn").disabled = true;
     api("/api/stop", "POST");

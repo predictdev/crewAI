@@ -121,10 +121,15 @@ async def request_code(req: Phone) -> dict[str, Any]:
 
 
 @router.post("/api/auth/verify")
-async def verify(req: Verify, response: Response) -> dict[str, Any]:
+async def verify(req: Verify, request: Request, response: Response) -> dict[str, Any]:
     data = await call("verify_code", phone=req.phone, code=req.code)
     response.set_cookie(
-        COOKIE, data["token"], max_age=SESSION_DAYS * 86400, httponly=True, samesite="lax"
+        COOKIE,
+        data["token"],
+        max_age=SESSION_DAYS * 86400,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
     )
     return {"user": data["user"]}
 

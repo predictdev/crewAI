@@ -1,0 +1,36 @@
+# Fly.io config for AI Office. Deploy from the repository root with ./apps/ai_office/deploy.sh
+# (first-time setup: apps/ai_office/README.md → 배포).
+app = "ai-office-predict"
+primary_region = "nrt"
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8080"
+  OFFICE_STORAGE_DIR = "/data"  # businesses, instructions, recordings and reports
+  FORWARDED_ALLOW_IPS = "*"     # trust Fly's proxy so login cookies are marked Secure
+
+# One volume, one machine: the instruction queue lives in this process.
+[[mounts]]
+  source = "office_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Instructions run for many minutes and the office keeps a websocket open: never sleep.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    path = "/login.html"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "2gb"  # the server and a running crew are two Python processes

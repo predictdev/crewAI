@@ -1,0 +1,17 @@
+# Only what the AI Office image (apps/ai_office/Dockerfile) needs; keeps docs/ and .git out of the build upload.
+*
+!lib/crewai-core
+!lib/cli
+!lib/crewai
+!examples/research_crew/tools.py
+!apps/ai_office
+
+**/__pycache__
+**/.venv
+**/.env
+apps/ai_office/data
+apps/ai_office/runs
+apps/ai_office/output
+apps/ai_office/team.json
+apps/ai_office/supabase
+lib/crewai/tests

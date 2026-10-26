@@ -31,7 +31,7 @@ from team import MAX_MEMBERS, MODELS, TOOLS, Team, default_team
 
 APP_DIR = Path(__file__).resolve().parent
 CREW_DIR = APP_DIR.parent.parent / "examples" / "research_crew"
-RUNS_DIR = APP_DIR / "runs"
+RUNS_DIR = store.STORAGE_DIR / "runs"
 SAMPLES_DIR = APP_DIR / "samples"
 MAX_REPLAY_GAP = 2.5  # seconds; live runs have multi-minute gaps between events
 STOP_GRACE = 3.0  # seconds to wait after SIGTERM before SIGKILL
@@ -121,6 +121,7 @@ class Office:
                         "order": order.model_dump(),
                         "project": {"id": project.id, "name": project.name, "goal": project.goal},
                         "team": project.team.model_dump(),
+                        "finished_work": _finished_work(order),
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -427,6 +428,36 @@ async def create_order(req: OrderCreate) -> dict[str, Any]:
     return order.model_dump()
 
 
+DELEGATE_TOOL = "delegate_work_to_coworker"
+
+
+def _finished_work(order: Order) -> list[dict[str, Any]]:
+    """Delegations already finished by the interrupted run(s) this order resumes."""
+    previous = next((o for o in office.orders if o.id == order.resume_of), None)
+    if previous is None or not previous.run:
+        return []
+    run_dir = RUNS_DIR / previous.run
+    work: list[dict[str, Any]] = []
+    meta = run_dir / "order.json"
+    if meta.exists():  # what that run itself had carried over
+        work += json.loads(meta.read_text(encoding="utf-8")).get("finished_work", [])
+    events = run_dir / "events.jsonl"
+    if events.exists():
+        for line in events.read_text(encoding="utf-8").splitlines():
+            event = json.loads(line)
+            if event.get("kind") == "tool_finished" and event.get("tool") == DELEGATE_TOOL:
+                # Runs from before full results were recorded only kept a preview.
+                work.append(
+                    {
+                        "coworker": event.get("coworker"),
+                        "task": event.get("request"),
+                        "result": event.get("result") or event.get("output", ""),
+                        "partial": not event.get("result"),
+                    }
+                )
+    return work
+
+
 def _order(order_id: str) -> Order:
     order = next((o for o in office.orders if o.id == order_id), None)
     if order is None:
@@ -455,6 +486,26 @@ async def order_report(order_id: str) -> dict[str, Any]:
 
 class Speed(BaseModel):
     speed: float = 2.0
+
+
+@app.post("/api/orders/{order_id}/resume")
+async def resume_order(order_id: str) -> dict[str, Any]:
+    previous = _order(order_id)
+    if previous.status not in ("failed", "stopped"):
+        raise HTTPException(409, "중단되거나 실패한 지시만 이어서 실행할 수 있습니다.")
+    _project(previous.project_id)
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise HTTPException(400, "ANTHROPIC_API_KEY가 없어 실행할 수 없습니다.")
+    order = Order(
+        id=store.new_id(),
+        project_id=previous.project_id,
+        instruction=previous.instruction,
+        resume_of=previous.id,
+    )
+    office.orders.append(order)
+    office.orders_changed()
+    office.wake.set()
+    return order.model_dump()
 
 
 @app.post("/api/orders/{order_id}/replay")
@@ -486,4 +537,5 @@ async def ws(websocket: WebSocket) -> None:
 app.mount("/", StaticFiles(directory=APP_DIR / "static", html=True), name="static")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=int(os.getenv("PORT", "8765")))
+    # HOST=0.0.0.0 when deployed; FORWARDED_ALLOW_IPS lets uvicorn trust the proxy's https.
+    uvicorn.run(app, host=os.getenv("HOST", "127.0.0.1"), port=int(os.getenv("PORT", "8765")))

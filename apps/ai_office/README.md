@@ -15,6 +15,8 @@ python3 -m uv pip install --python .venv/bin/python -r apps/ai_office/requiremen
 .venv/bin/python apps/ai_office/server.py
 ```
 
+창을 닫아도 꺼지지 않게 띄우려면 `apps/ai_office/serve.sh start`를 씁니다. 백그라운드에서 돌고, 서버가 죽으면 3초 뒤 다시 켭니다. 끌 때는 `serve.sh stop`, 상태는 `serve.sh status`, 로그는 `apps/ai_office/server.log`입니다. 재부팅 후에는 다시 `start` 해야 합니다.
+
 http://localhost:8765 에 접속합니다. API 키는 `examples/research_crew/.env`의 `ANTHROPIC_API_KEY`를 사용합니다.
 
 ## 로그인과 회원
@@ -48,12 +50,15 @@ supabase functions deploy multiai-send-sms --project-ref woevgjaavqtecdhkxnhl --
 
 ## 사업과 업무 지시
 
-- **사업**: 왼쪽 목록에 모든 사업이 사업 목표, 최근 지시, 완료·대기 수와 함께 나옵니다. 사업을 고르면 화면 전체가 그 사업으로 바뀝니다: 팀과 사무실, 📋 업무 목록, 📄 Report(그 사업의 최근 결과물), 재생 목록(그 사업의 실행 기록), 입력칸. 마지막으로 고른 사업은 다시 들어왔을 때 그대로 열립니다.
+- **사업**: 왼쪽 목록에 모든 사업이 사업 목표, 최근 지시, 완료·대기 수와 함께 나옵니다. 사업을 고르면 화면 전체가 그 사업으로 바뀝니다: 팀과 사무실, 📋 업무 목록, 📄 Report(그 사업의 최근 결과물), 입력칸. 마지막으로 고른 사업은 다시 들어왔을 때 그대로 열립니다.
 - **사업 만들기·고치기**: **＋ 새 사업**으로 이름과 사업 목표를 넣어 만듭니다(지금 팀 복사 또는 기본 팀). 고른 사업의 **✎ 이름·목표**에서 이름·목표를 고치거나 사업을 삭제합니다.
 - **사업 목표**: 팀장은 모든 지시를 그 사업의 목표에 맞춰 해석합니다. 구체적으로 적을수록 지시가 짧아도 됩니다.
 - **업무 지시**: 입력칸에 하고 싶은 일을 그대로 쓰고 **📨 지시**(Enter)를 누릅니다. 예: "학원 원장 대상 서비스 소개 제안서 초안 써줘", "경쟁 서비스 5곳 가격 비교표 만들어줘".
 - **대기열**: 지시는 모든 사업을 통틀어 하나씩 차례대로 처리됩니다. 여러 개를 넣어 두면 앞의 일이 끝나는 대로 이어서 시작합니다. 대기 중인 지시는 📋 업무 탭에서 취소할 수 있습니다.
 - **결과**: 끝난 지시는 📋 업무 탭에서 **📄 결과 보기**, **⟲ 재생**(비용 없이 다시 보기), **↻ 다시 지시**를 할 수 있습니다.
+- **▶ 이어서 실행**: 중지되거나 실패한 지시(서버 재시작 포함)는 📋 업무 탭에서 이어서 실행할 수 있습니다. 그때 팀원들이 끝낸 일의 결과를 팀장에게 함께 넘겨, 끝난 일은 다시 맡기지 않고 남은 일만 진행합니다. 브라우저를 닫거나 브라우저가 멈춰도 지시는 서버에서 계속 진행되며, 다시 접속하면 진행 화면이 그대로 이어집니다.
+- **진행 표시줄**: 입력칸 아래에 지금 무엇이 진행 중인지(LIVE·REPLAY, 다른 사업이 일하는 중이면 **보러 가기**)와 **■ 중지** 버튼이 한 줄로 나옵니다.
+- **재생**: 지시마다 📋 업무 카드의 **⟲ 재생**으로 봅니다(속도는 탭 위에서 선택). 샘플과 사업 기능 이전의 기록은 탭 맨 아래 **샘플·이전 기록 재생**에 있습니다.
 - **■ 중지**: 진행 중인 지시를 멈춥니다. 별도 프로세스라 바로 종료되고, 대기열의 다음 지시가 이어서 시작됩니다.
 - 실행마다 API 비용이 듭니다. 녹화와 결과물은 `runs/<시각>-<지시 id>/`에 저장됩니다(git 제외).
 
@@ -68,6 +73,43 @@ supabase functions deploy multiai-send-sms --project-ref woevgjaavqtecdhkxnhl --
 - **담당 분야·하는 일**은 팀장이 일을 맡길 사람을 고르는 기준입니다. 구체적으로 쓸수록 알맞게 나눠 맡깁니다.
 - **역할(role)은 사람마다 달라야 합니다.** 팀장이 역할로 사람을 구분해 일을 맡기기 때문입니다.
 - 글에는 `{topic}`(업무 지시 내용), `{current_year}`만 쓸 수 있습니다. 다른 `{...}`는 저장할 때 거부됩니다.
+
+## 배포 (Fly.io)
+
+서버 한 대에 볼륨 하나를 붙여 돌립니다. 지시 대기열이 서버 메모리에 있어서 **머신은 반드시 1대**여야 합니다. 지시가 오래 걸리고 웹소켓을 계속 쓰므로 머신이 잠들지 않게 설정돼 있습니다(`fly.toml`).
+
+| 파일 | 내용 |
+| --- | --- |
+| `Dockerfile` | 저장소 루트에서 빌드. 이 저장소의 crewAI 소스와 앱을 담음 |
+| `fly.toml` | 앱 이름, 지역(nrt 도쿄), 볼륨 `/data`, 메모리 2GB, 헬스 체크 |
+| `deploy.sh` | 저장소 루트에서 `fly deploy` 실행 |
+| `/.dockerignore` | 빌드에 필요한 폴더만 올림(docs·.git 제외) |
+
+처음 한 번:
+
+```bash
+brew install flyctl
+fly auth login
+# fly.toml의 app 이름을 원하는 이름으로 바꾼 뒤
+fly apps create ai-office-predict
+fly volumes create office_data --app ai-office-predict --region nrt --size 1
+fly secrets set --app ai-office-predict ANTHROPIC_API_KEY=... SUPABASE_URL=https://<ref>.supabase.co SUPABASE_ANON_KEY=...
+./apps/ai_office/deploy.sh
+```
+
+이후 업데이트는 `./apps/ai_office/deploy.sh`만 실행합니다. 대기 중인 지시는 볼륨에 남아 재시작 뒤 이어서 처리되지만, 배포 순간 실행 중이던 지시는 실패로 표시됩니다.
+
+- 주소: `https://<앱 이름>.fly.dev` (도메인 연결: `fly certs add office.example.com`)
+- 로그: `fly logs`, 접속: `fly ssh console`
+- 지금 쓰던 사업·기록을 옮기려면:
+  ```bash
+  tar czf office-data.tgz -C apps/ai_office data runs
+  fly ssh sftp shell   # put office-data.tgz /data/office-data.tgz
+  fly ssh console -C "tar xzf /data/office-data.tgz -C /data"
+  fly machine restart
+  ```
+
+배포 환경에서는 `OFFICE_STORAGE_DIR=/data` 아래에 `data/`, `runs/`가 생깁니다. 로컬에서는 이 폴더(`apps/ai_office/`) 아래에 생깁니다.
 
 ## 데이터
 

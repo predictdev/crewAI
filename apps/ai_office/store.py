@@ -9,6 +9,7 @@ Everything lives under ``data/`` (gitignored) as small JSON files:
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import time
@@ -20,7 +21,9 @@ from pydantic import BaseModel, Field
 from team import Team, default_team
 
 APP_DIR = Path(__file__).resolve().parent
-DATA_DIR = APP_DIR / "data"
+# Where data/ and runs/ live: the app folder locally, a mounted volume when deployed.
+STORAGE_DIR = Path(os.getenv("OFFICE_STORAGE_DIR") or APP_DIR)
+DATA_DIR = STORAGE_DIR / "data"
 PROJECTS_DIR = DATA_DIR / "projects"
 ORDERS_FILE = DATA_DIR / "orders.json"
 LEGACY_TEAM_FILE = APP_DIR / "team.json"  # the single team saved before businesses existed
@@ -47,6 +50,7 @@ class Order(BaseModel):
     run: str | None = None  # runs/<run> holds its recording and report
     tokens: int | None = None
     error: str | None = None
+    resume_of: str | None = None  # an interrupted order whose finished work this one reuses
 
 
 def new_id() -> str:

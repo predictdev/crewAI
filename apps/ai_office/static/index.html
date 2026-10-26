@@ -10,19 +10,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="logo">AI OFFICE</span><span class="mode" id="mode">IDLE</span></div>
-    <form class="run" id="order-form">
-      <textarea id="instruction" rows="1" placeholder="팀장에게 업무 지시 (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
-      <button type="submit" id="order-btn" class="primary">📨 지시</button>
-    </form>
-    <div class="replay">
-      <select id="recording" aria-label="녹화 선택"></select>
-      <select id="speed" aria-label="재생 속도">
-        <option value="1">1x</option><option value="2" selected>2x</option><option value="4">4x</option>
-      </select>
-      <button type="button" id="replay-btn">⟲ 재생</button>
-    </div>
-    <button type="button" id="stop-btn" class="danger" hidden>■ 중지</button>
+    <div class="brand"><span class="logo">AI OFFICE</span></div>
     <div class="conn" id="conn"><span class="dot"></span><span>연결 중</span></div>
     <div class="account">
       <button type="button" id="members-btn" hidden>👥 회원 <span class="badge new" id="members-badge" hidden>0</span></button>
@@ -40,9 +28,6 @@
     <ul class="members-list" id="members-list"></ul>
   </dialog>
 
-  <p class="hint" id="hint" hidden></p>
-  <p class="hint info" id="flash" hidden></p>
-  <p class="hint info" id="away" hidden></p>
 
   <div class="workspace">
   <aside class="biz" aria-label="사업 목록">
@@ -53,6 +38,18 @@
     <ul class="biz-list" id="biz-list"></ul>
   </aside>
   <div class="workspace-main">
+  <form class="run" id="order-form">
+    <textarea id="instruction" rows="1" placeholder="팀장에게 업무 지시 (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
+    <button type="submit" id="order-btn" class="primary">📨 지시</button>
+  </form>
+  <div class="now" id="now" hidden>
+    <span class="mode" id="mode"></span>
+    <span class="now-text" id="now-text"></span>
+    <button type="button" id="now-go" hidden>보러 가기</button>
+    <button type="button" id="stop-btn" class="danger-outline">■ 중지</button>
+  </div>
+  <p class="hint" id="hint" hidden></p>
+  <p class="hint info" id="flash" hidden></p>
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="office" class="active">🏢 Office</button>
     <button role="tab" data-tab="tasks">📋 업무 <span class="badge" id="tasks-badge">0</span></button>
@@ -98,7 +95,21 @@
     </section>
 
     <section class="panel" data-panel="tasks">
+      <div class="tasks-bar">
+        <label>재생 속도
+          <select id="speed" aria-label="재생 속도">
+            <option value="1">1x</option><option value="2" selected>2x</option><option value="4">4x</option>
+          </select>
+        </label>
+      </div>
       <div id="task-list" class="task-list"></div>
+      <details class="more-recordings" id="more-recordings">
+        <summary>샘플·이전 기록 재생</summary>
+        <div class="replay">
+          <select id="recording" aria-label="녹화 선택"></select>
+          <button type="button" id="replay-btn">⟲ 재생</button>
+        </div>
+      </details>
     </section>
 
     <section class="panel" data-panel="report">

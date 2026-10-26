@@ -284,3 +284,21 @@ dialog.members::backdrop { background: #0009; }
   .biz-list { grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); overflow-x: auto; padding-bottom: 4px; }
   .workspace main { padding-right: 0; }
 }
+
+/* ---------- composer, now-strip, replay (inside the workspace) ---------- */
+.workspace-main > .run { margin-top: 12px; }
+.workspace-main > .hint { margin: 10px 0 0; }
+.now {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px;
+}
+.now[hidden] { display: none; }
+.now-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now button { padding: 4px 10px; font-size: 12.5px; }
+.tasks-bar { display: flex; justify-content: flex-end; margin: 4px 0 10px; }
+.tasks-bar label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+.tasks-bar select { padding: 3px 8px; }
+.more-recordings { margin-top: 16px; color: var(--muted); font-size: 13px; }
+.more-recordings summary { cursor: pointer; }
+.more-recordings .replay { margin-top: 8px; }
+.more-recordings select { max-width: 420px; }

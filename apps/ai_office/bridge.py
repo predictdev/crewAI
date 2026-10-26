@@ -109,11 +109,17 @@ class OfficeEventListener(BaseEventListener):
 
         @crewai_event_bus.on(ToolUsageFinishedEvent)
         def _(source: Any, event: ToolUsageFinishedEvent) -> None:
+            args = event.tool_args if isinstance(event.tool_args, dict) else {}
+            delegated = bool(args.get("coworker")) and bool(args.get("task"))
             self._emit(
                 "tool_finished",
                 agent=_agent_id(event),
                 tool=event.tool_name,
                 output=_preview(event.output),
+                # A finished delegation in full, so an interrupted instruction can resume from it.
+                coworker=args.get("coworker") if delegated else None,
+                request=args.get("task") if delegated else None,
+                result=(getattr(event.output, "raw", None) or str(event.output or "")) if delegated else None,
             )
 
         @crewai_event_bus.on(ToolUsageErrorEvent)

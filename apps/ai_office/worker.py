@@ -83,7 +83,29 @@ def _org_chart(team: Team) -> str:
     return "\n".join(f"- {name}\n  " + "\n  ".join(people) for name, people in teams.items())
 
 
-def build_crew(team: Team, goal: str = "") -> tuple[Crew, Agent, list[Agent]]:
+RESUME_NOTE = """이 지시는 중간에 중단된 실행을 이어서 하는 것이다. 그때 팀원들이 이미 끝낸 일과
+결과가 아래에 있다. 같은 일을 다시 맡기지 말고 이 결과를 그대로 활용하라. 아직 안 된 일만
+맡기고, 결과가 잘려 있거나 부족할 때만 보완을 요청하라."""
+
+
+def _no_braces(text: str) -> str:
+    # Braces would read as crewAI placeholders.
+    return text.replace("{", "(").replace("}", ")")
+
+
+def _finished_work_text(work: list[dict[str, Any]]) -> str:
+    blocks = []
+    for item in work:
+        who = item.get("coworker") or "팀원"
+        head = f"### {who}에게 맡긴 일" + (f": {item['task']}" if item.get("task") else "")
+        cut = "\n(기록에 앞부분만 남아 있음)" if item.get("partial") else ""
+        blocks.append(f"{head}\n결과:\n{item['result']}{cut}")
+    return "\n\n".join(blocks)
+
+
+def build_crew(
+    team: Team, goal: str = "", finished_work: list[dict[str, Any]] | None = None
+) -> tuple[Crew, Agent, list[Agent]]:
     """One task (the instruction) run by the manager, who splits it and delegates to members."""
     # Both sides learn the org chart and each member's specialty from their backstory.
     manager = _agent(
@@ -105,9 +127,9 @@ def build_crew(team: Team, goal: str = "") -> tuple[Crew, Agent, list[Agent]]:
     ]
     description = ORDER_DESCRIPTION
     if goal:
-        # Braces would read as crewAI placeholders.
-        goal = goal.replace("{", "(").replace("}", ")")
-        description += f"\n\n이 사업의 목표:\n{goal}\n\n지시를 이 사업의 목표에 맞게 해석하고 수행하라."
+        description += f"\n\n이 사업의 목표:\n{_no_braces(goal)}\n\n지시를 이 사업의 목표에 맞게 해석하고 수행하라."
+    if finished_work:
+        description += f"\n\n{RESUME_NOTE}\n\n{_no_braces(_finished_work_text(finished_work))}"
     task = Task(name="order", description=description, expected_output=ORDER_OUTPUT)
     crew = Crew(
         agents=members,
@@ -139,7 +161,9 @@ def main(run_dir: Path) -> None:
     inputs = {"topic": instruction, "current_year": str(datetime.now().year)}
     try:
         team = Team.model_validate(spec["team"])
-        crew, manager, members = build_crew(team, spec["project"].get("goal", ""))
+        crew, manager, members = build_crew(
+            team, spec["project"].get("goal", ""), spec.get("finished_work")
+        )
         emit(
             {
                 "kind": "roster",
