@@ -933,6 +933,7 @@
   async function openEditor() {
     const data = await (await fetch(`/api/projects/${selectedProject}/team`)).json();
     edit = { draft: structuredClone(data.team), saved: JSON.stringify(data.team), selected: "manager", drag: null, scene: null };
+    showTab("office");  // the editor lives in the Office panel
     $("#feed-box").hidden = true;
     $("#editor").hidden = false;
     $("#edit-btn").textContent = "✕ 편집 닫기";
@@ -941,6 +942,7 @@
     draftChanged(true);
     renderEditor();
     renderStats();
+    $("#stage").scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
   function closeEditor(force = false) {
