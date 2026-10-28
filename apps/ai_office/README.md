@@ -15,7 +15,19 @@ python3 -m uv pip install --python .venv/bin/python -r apps/ai_office/requiremen
 .venv/bin/python apps/ai_office/server.py
 ```
 
-창을 닫아도 꺼지지 않게 띄우려면 `apps/ai_office/serve.sh start`를 씁니다. 백그라운드에서 돌고, 서버가 죽으면 3초 뒤 다시 켭니다. 끌 때는 `serve.sh stop`, 상태는 `serve.sh status`, 로그는 `apps/ai_office/server.log`입니다. 재부팅 후에는 다시 `start` 해야 합니다.
+창을 닫아도 꺼지지 않게 띄우려면 `apps/ai_office/serve.sh start`를 씁니다. 백그라운드에서 돌고, 서버가 죽으면 3초 뒤 다시 켭니다. 끌 때는 `serve.sh stop`, 상태는 `serve.sh status`, 로그는 `apps/ai_office/server.log`입니다. 재부팅 후에는 다시 `start` 해야 합니다. 서버가 도는 동안에는 맥이 잠들지 않습니다.
+
+### 사무실 컴퓨터에서 원격 접속 받기
+
+사무실의 항상 켜 둔 맥 한 대에서 돌리고, 밖에서는 `https://도메인`으로 접속합니다. 앱은 이 맥 안(127.0.0.1)에서만 열리고, 앞에 둔 Caddy가 HTTPS 인증서를 자동으로 받아 연결해 줍니다. 로그인 문자 코드와 쿠키가 암호화되지 않은 채 오가지 않도록 앱 포트(8765)는 직접 열지 않습니다.
+
+1. Caddy 설치: `brew install caddy`
+2. 도메인 DNS에 A 레코드 추가: `office.<도메인>` → 사무실 공인 IP. 공인 IP가 바뀌는 회선이면 공유기의 DDNS를 쓰고 CNAME으로 연결합니다.
+3. 공유기 포트포워드: 외부 80, 443 → 이 맥의 내부 IP 80, 443 (TCP). 내부 IP는 공유기에서 고정 할당합니다.
+4. `apps/ai_office/.env`에 `OFFICE_DOMAIN=office.<도메인>` 추가
+5. `apps/ai_office/serve.sh stop && apps/ai_office/serve.sh start`
+
+처음 시작할 때 Caddy가 인증서를 받으므로 80·443 포워드가 먼저 되어 있어야 합니다. 사무실 안에서도 같은 주소로 접속합니다. 안에서만 안 열리면 공유기의 헤어핀 NAT(NAT 루프백) 설정을 켭니다.
 
 http://localhost:8765 에 접속합니다. API 키는 `examples/research_crew/.env`의 `ANTHROPIC_API_KEY`를 사용합니다.
 

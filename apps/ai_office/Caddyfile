@@ -1,0 +1,7 @@
+# HTTPS front for running AI Office on an office machine with router port
+# forwarding (80 and 443 → this machine). Caddy gets the certificate itself.
+# serve.sh starts it when OFFICE_DOMAIN is set; the app stays on 127.0.0.1.
+{$OFFICE_DOMAIN} {
+	encode gzip
+	reverse_proxy 127.0.0.1:{$PORT:8765}
+}

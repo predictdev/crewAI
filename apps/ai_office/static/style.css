@@ -302,3 +302,34 @@ dialog.members::backdrop { background: #0009; }
 .more-recordings summary { cursor: pointer; }
 .more-recordings .replay { margin-top: 8px; }
 .more-recordings select { max-width: 420px; }
+
+/* ---------- phones ---------- */
+@media (max-width: 560px) {
+  .topbar { padding: 10px 12px; gap: 8px; }
+  .conn span:last-child { display: none; }   /* the dot alone shows the connection */
+  .workspace { padding: 0 10px; gap: 0; }
+  .panel { padding: 10px; border-radius: 0 0 8px 8px; }
+  /* iOS zooms into inputs smaller than 16px */
+  input, select, textarea, .run textarea { font-size: 16px; }
+  .run textarea { min-height: 64px; }
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs button { flex: none; white-space: nowrap; padding: 7px 10px; font-size: 13px; }
+  .edit-btn { margin-bottom: 0; align-self: stretch; }
+  .biz-list { grid-auto-columns: minmax(240px, 85%); scroll-snap-type: x mandatory; }
+  .biz-item { scroll-snap-align: start; }
+  .biz-goal, .biz-item.active .biz-goal { -webkit-line-clamp: 2; }
+  .biz-last { display: none; }
+  .stats { gap: 6px; margin-bottom: 10px; }
+  .stat { padding: 6px 8px; }
+  .stat b { font-size: 11px; }
+  .bubble { font-size: 9px; max-width: 19%; padding: 2px 5px; }
+  .bubble.from-left { max-width: 40%; }
+  .report { font-size: 14.5px; }
+  .report h1 { font-size: 20px; } .report h2 { font-size: 17px; }
+  .report th, .report td { min-width: 5.5em; word-break: keep-all; padding: 5px 8px; }
+  .report pre { overflow-x: auto; }
+  .report-bar { align-items: flex-start; }
+  .report-bar button { flex: none; }
+  .field-grid { grid-template-columns: 1fr; }
+  .task { padding: 10px 12px; }
+}
