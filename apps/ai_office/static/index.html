@@ -54,6 +54,7 @@
     <button role="tab" data-tab="office" class="active">🏢 Office</button>
     <button role="tab" data-tab="tasks">📋 업무 <span class="badge" id="tasks-badge">0</span></button>
     <button role="tab" data-tab="report">📄 Report <span class="badge new" id="report-badge" hidden>NEW</span></button>
+    <button role="tab" data-tab="approvals">✅ 승인 <span class="badge new" id="approvals-badge" hidden>0</span></button>
     <button type="button" id="edit-btn" class="edit-btn">🛠 팀 편집</button>
   </nav>
 
@@ -117,7 +118,13 @@
         <span id="report-meta"></span>
         <button type="button" id="download-btn" disabled>⬇ .md 저장</button>
       </div>
+      <div class="report-files" id="report-files" hidden></div>
       <article id="report" class="report"><p class="empty">리포트가 완성되면 여기에 표시됩니다.</p></article>
+    </section>
+
+    <section class="panel" data-panel="approvals">
+      <p class="editor-note">팀원이 광고 등록·수정·예산 변경을 요청하면 여기에 쌓입니다. 관리자가 승인해야 그 요청 그대로 광고 플랫폼에 반영됩니다.</p>
+      <div id="action-list" class="task-list"></div>
     </section>
   </main>
   </div>

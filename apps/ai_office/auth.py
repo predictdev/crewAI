@@ -81,9 +81,14 @@ async def require_login(request: Request, call_next: Any) -> Response:
     return await call_next(request)
 
 
-def _admin_token(request: Request) -> str:
+def require_admin(request: Request) -> dict[str, Any]:
     if not request.state.user.get("is_admin"):
         raise HTTPException(403, "관리자만 할 수 있습니다.")
+    return request.state.user
+
+
+def _admin_token(request: Request) -> str:
+    require_admin(request)
     return request.cookies[COOKIE]
 
 

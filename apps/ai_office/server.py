@@ -21,12 +21,15 @@ from typing import Any
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import ads
 import auth
 import store
-from store import Order, Project
+from agent_tools import FILE_NAME, naver_search_configured
+from store import Action, Order, Project
 from team import MAX_MEMBERS, MODELS, TOOLS, Team, default_team
 
 APP_DIR = Path(__file__).resolve().parent
@@ -60,6 +63,11 @@ class Office:
             if order.status == "running":  # the server stopped mid-run
                 order.status, order.error = "failed", "서버가 재시작되어 중단됨"
         store.save_orders(self.orders)
+        self.actions = store.load_actions()
+        for action in self.actions:
+            if action.status == "running":  # the server stopped mid-call
+                action.status, action.result = "failed", "서버가 재시작되어 결과를 알 수 없습니다. 광고 관리자에서 확인하세요."
+        store.save_actions(self.actions)
 
     # ---------- events ----------
 
@@ -90,6 +98,10 @@ class Office:
     def orders_changed(self) -> None:
         store.save_orders(self.orders)
         self.queue.put_nowait({"kind": "orders", "t": time.time(), "transient": True})
+
+    def actions_changed(self) -> None:
+        store.save_actions(self.actions)
+        self.queue.put_nowait({"kind": "actions", "t": time.time(), "transient": True})
 
     # ---------- the queue ----------
 
@@ -144,6 +156,9 @@ class Office:
                     order.status, order.tokens = "done", event.get("total_tokens")
                 elif event["kind"] == "run_failed":
                     order.status, order.error = "failed", event.get("error")
+                elif event["kind"] == "action_proposed":
+                    self.actions.append(Action(project_id=order.project_id, **event["action"]))
+                    self.actions_changed()
                 ended = ended or event["kind"] in ("run_completed", "run_failed")
                 await self.publish(event)
             code = await self.proc.wait()
@@ -280,6 +295,8 @@ async def status() -> dict[str, Any]:
         "current": {"order_id": current.id, "project_id": current.project_id} if current else None,
         "models": MODELS,
         "tools": TOOLS,
+        # Tools whose keys are missing still run, but only to say so.
+        "tools_ready": {"naver_search": naver_search_configured(), **{f"{p}_ads": ads.configured(p) for p in ads.LABELS}},
         "max_members": MAX_MEMBERS,
     }
 
@@ -484,6 +501,26 @@ async def order_report(order_id: str) -> dict[str, Any]:
     return {"order": order.model_dump(), "report": report.read_text(encoding="utf-8")}
 
 
+def _files_dir(order: Order) -> Path:
+    return RUNS_DIR / (order.run or "-") / "files"
+
+
+@app.get("/api/orders/{order_id}/files")
+async def order_files(order_id: str) -> list[dict[str, Any]]:
+    folder = _files_dir(_order(order_id))
+    if not folder.is_dir():
+        return []
+    return [{"name": p.name, "size": p.stat().st_size} for p in sorted(folder.iterdir()) if p.is_file()]
+
+
+@app.get("/api/orders/{order_id}/files/{name}")
+async def order_file(order_id: str, name: str) -> FileResponse:
+    path = _files_dir(_order(order_id)) / name
+    if not FILE_NAME.fullmatch(name) or not path.is_file():
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    return FileResponse(path, filename=name)
+
+
 class Speed(BaseModel):
     speed: float = 2.0
 
@@ -517,6 +554,47 @@ async def order_replay(order_id: str, req: Speed) -> dict[str, str]:
     _claim()
     office.job = asyncio.create_task(office.replay(events, max(req.speed, 0.1)))
     return {"status": "started"}
+
+
+# ---------- ad changes awaiting approval ----------
+
+
+@app.get("/api/actions")
+async def list_actions(project_id: str | None = None) -> list[dict[str, Any]]:
+    actions = [a for a in office.actions if project_id is None or a.project_id == project_id]
+    return [{**a.model_dump(), "platform_label": ads.LABELS[a.platform]} for a in reversed(actions)]
+
+
+def _pending(action_id: str, request: Request) -> tuple[Action, dict[str, Any]]:
+    user = auth.require_admin(request)  # approving spends money
+    action = next((a for a in office.actions if a.id == action_id), None)
+    if action is None:
+        raise HTTPException(404, "승인 요청을 찾을 수 없습니다.")
+    if action.status != "pending":
+        raise HTTPException(409, "이미 처리된 요청입니다.")
+    return action, user
+
+
+@app.post("/api/actions/{action_id}/approve")
+async def approve_action(action_id: str, request: Request) -> dict[str, Any]:
+    action, user = _pending(action_id, request)
+    action.status, action.decided, action.decided_by = "running", time.time(), user.get("name")
+    office.actions_changed()
+    try:
+        data = await asyncio.to_thread(ads.request, action.platform, action.method, action.path, action.params, action.body)
+        action.status, action.result = "done", json.dumps(data, ensure_ascii=False, indent=1)[:20000]
+    except ads.AdsError as e:
+        action.status, action.result = "failed", str(e)
+    office.actions_changed()
+    return action.model_dump()
+
+
+@app.post("/api/actions/{action_id}/reject")
+async def reject_action(action_id: str, request: Request) -> dict[str, Any]:
+    action, user = _pending(action_id, request)
+    action.status, action.decided, action.decided_by = "rejected", time.time(), user.get("name")
+    office.actions_changed()
+    return action.model_dump()
 
 
 @app.websocket("/ws")

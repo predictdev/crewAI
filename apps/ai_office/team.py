@@ -18,7 +18,8 @@ DEFAULT_TEAM_FILE = APP_DIR / "team.default.json"
 # Each member adds a delegate-and-review round for the manager (time and tokens).
 MAX_MEMBERS = 20
 MODELS = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5")
-TOOLS = ("web_search",)
+# What a member can be given; worker.py builds them, ad changes wait for approval.
+TOOLS = ("web_search", "web_crawl", "naver_search", "save_file", "naver_ads", "meta_ads", "google_ads")
 # Kickoff only supplies these ({topic} is the instruction text); any other {name}
 # makes crewAI fail at run time.
 PLACEHOLDERS = {"topic", "current_year"}

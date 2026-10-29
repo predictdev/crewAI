@@ -34,12 +34,14 @@ load_dotenv(APP_DIR / ".env")
 
 from crewai import LLM, Agent, Crew, Process, Task  # noqa: E402
 from crewai.events import crewai_event_bus  # noqa: E402
+from crewai.tools import BaseTool  # noqa: E402
 from tools import ClaudeWebSearchTool  # noqa: E402
 
+import ads  # noqa: E402
+import store  # noqa: E402
+from agent_tools import CrawlSiteTool, FetchPageTool, NaverSearchTool, NaverTrendTool, SaveFileTool  # noqa: E402
 from bridge import OfficeEventListener  # noqa: E402
-from team import Person, Team  # noqa: E402
-
-TOOL_FACTORIES = {"web_search": ClaudeWebSearchTool}
+from team import Member, Person, Team  # noqa: E402
 
 # {topic} is filled with the instruction at kickoff (never re-parsed, so braces in it are safe).
 ORDER_DESCRIPTION = """대표(CEO)의 업무 지시:
@@ -76,6 +78,25 @@ def _agent(person: Person, **kwargs: Any) -> Agent:
     )
 
 
+def _tools(member: Member, run_dir: Path, order_id: str) -> list[BaseTool]:
+    def propose(change: dict[str, Any]) -> str:
+        # The server stores it; it runs once an admin approves it in the office.
+        action = {**change, "id": store.new_id(), "order_id": order_id, "agent": member.name}
+        emit({"kind": "action_proposed", "t": time.time(), "action": action})
+        return action["id"]
+
+    factories: dict[str, Any] = {
+        "web_search": lambda: [ClaudeWebSearchTool()],
+        "web_crawl": lambda: [FetchPageTool(), CrawlSiteTool()],
+        "naver_search": lambda: [NaverSearchTool(), NaverTrendTool()],
+        "save_file": lambda: [SaveFileTool(folder=run_dir / "files")],
+        "naver_ads": lambda: ads.tools_for("naver", propose),
+        "meta_ads": lambda: ads.tools_for("meta", propose),
+        "google_ads": lambda: ads.tools_for("google", propose),
+    }
+    return [tool for name in member.tools for tool in factories[name]()]
+
+
 def _org_chart(team: Team) -> str:
     teams: dict[str, list[str]] = {}
     for m in team.members:
@@ -104,7 +125,11 @@ def _finished_work_text(work: list[dict[str, Any]]) -> str:
 
 
 def build_crew(
-    team: Team, goal: str = "", finished_work: list[dict[str, Any]] | None = None
+    team: Team,
+    goal: str = "",
+    finished_work: list[dict[str, Any]] | None = None,
+    run_dir: Path | None = None,
+    order_id: str = "",
 ) -> tuple[Crew, Agent, list[Agent]]:
     """One task (the instruction) run by the manager, who splits it and delegates to members."""
     # Both sides learn the org chart and each member's specialty from their backstory.
@@ -120,7 +145,7 @@ def build_crew(
                 f"{m.backstory}\n\n소속: {m.team}\n담당 분야: {m.task_name}\n"
                 f"하는 일: {m.task}\n결과물 형식: {m.expected_output}"
             ),
-            tools=[TOOL_FACTORIES[name]() for name in m.tools],
+            tools=_tools(m, run_dir or APP_DIR / "output", order_id),
             allow_delegation=False,
         )
         for m in team.members
@@ -162,7 +187,7 @@ def main(run_dir: Path) -> None:
     try:
         team = Team.model_validate(spec["team"])
         crew, manager, members = build_crew(
-            team, spec["project"].get("goal", ""), spec.get("finished_work")
+            team, spec["project"].get("goal", ""), spec.get("finished_work"), run_dir, spec["order"]["id"]
         )
         emit(
             {

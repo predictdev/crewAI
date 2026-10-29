@@ -16,6 +16,12 @@
     name: "이름", title: "직함", team: "팀 이름", role: "역할", goal: "목표", backstory: "배경",
     model: "모델", task_name: "담당 분야", task: "하는 일", expected_output: "결과물 형식", tools: "도구", look: "외형",
   };
+  const TOOL_LABELS = {
+    web_search: "웹 검색", web_crawl: "사이트 읽기·크롤링", naver_search: "네이버 검색·트렌드", save_file: "파일 저장",
+    naver_ads: "네이버 검색광고", meta_ads: "메타 광고", google_ads: "구글 Ads",
+  };
+  const ACTION_LABELS = { pending: "승인 대기", running: "실행 중", done: "반영됨", failed: "실패", rejected: "거절" };
+  const ACTION_PILLS = { pending: "in_progress", running: "in_progress", done: "done", failed: "failed", rejected: "stopped" };
   const MODEL_LABELS = { "claude-opus-5-5": "Opus 5.5", "claude-sonnet-5-5": "Sonnet 5.5", "claude-haiku-5-5": "Haiku 5.5" };
   const NEW_LOOKS = [
     { hair: "#3a2a1a", skin: "#f2c9a0", shirt: "#d6873d", pants: "#2a2a3a", long_hair: false },
@@ -32,7 +38,9 @@
   let state;
   let bubbles = new Map();
   let savedTeam = null;
-  let meta = { models: Object.keys(MODEL_LABELS), tools: ["web_search"], max_members: 20 };
+  let meta = { models: Object.keys(MODEL_LABELS), tools: ["web_search"], tools_ready: {}, max_members: 20 };
+  let actions = []; // ad changes of the selected business, newest first
+  let isAdmin = false;
   let edit = null; // { draft, saved, selected, drag, scene } while the team editor is open
   let idle = null; // scene of the selected business at rest
   let overlayOf = null; // scene the overlay was built for
@@ -344,6 +352,9 @@
         say(mgr, "⚠️ 실행 실패", "error");
         feed(ev, "error", mgr.name, "❌ 실행 실패", ev.error);
         break;
+      case "action_proposed":
+        feed(ev, "tool", ev.action.agent, `🧾 승인 요청 (${TOOL_LABELS[`${ev.action.platform}_ads`]}): ${ev.action.summary}`);
+        break;
       case "run_stopped":
         state.endedAt = ev.t;
         state.tasks.forEach((t) => { if (t.status === "in_progress") t.status = "stopped"; });
@@ -532,7 +543,7 @@
     const res = await fetch(`/api/orders/${order.id}/report`);
     if (!res.ok) return false;
     const body = await res.json();
-    reportView = { title: order.instruction, text: body.report, tokens: order.tokens };
+    reportView = { title: order.instruction, text: body.report, tokens: order.tokens, orderId: order.id };
     return true;
   }
 
@@ -556,6 +567,83 @@
     const title = view.title.length > 80 ? `${view.title.slice(0, 80)}…` : view.title;
     $("#report-meta").textContent = `지시: ${title}${view.tokens ? ` · ${view.tokens.toLocaleString()} 토큰` : ""}`;
     $("#download-btn").disabled = false;
+    renderFiles(view.orderId || (state.mode === "live" && state.orderId) || orders.find((o) => o.status === "done")?.id);
+  }
+
+  // Files the team saved with save_file, next to the report they belong to.
+  async function renderFiles(orderId) {
+    const box = $("#report-files");
+    box.hidden = true;
+    if (!orderId) return;
+    const files = await (await fetch(`/api/orders/${orderId}/files`)).json().catch(() => []);
+    if (!Array.isArray(files) || !files.length) return;
+    box.innerHTML = "<b>📎 저장된 파일</b>";
+    files.forEach((f) => {
+      const a = document.createElement("a");
+      a.href = `/api/orders/${orderId}/files/${encodeURIComponent(f.name)}`;
+      a.download = f.name;
+      a.textContent = `${f.name} (${f.size < 1024 ? `${f.size} B` : `${Math.ceil(f.size / 1024)} KB`})`;
+      box.append(a);
+    });
+    box.hidden = false;
+  }
+
+  // ---------- ad changes awaiting approval ----------
+
+  async function loadActions() {
+    if (!selectedProject) return;
+    actions = await (await fetch(`/api/actions?project_id=${encodeURIComponent(selectedProject)}`)).json();
+    renderActions();
+  }
+
+  function renderActions() {
+    const pending = actions.filter((a) => a.status === "pending").length;
+    $("#approvals-badge").textContent = pending;
+    $("#approvals-badge").hidden = !pending;
+    const list = $("#action-list");
+    list.innerHTML = "";
+    if (!actions.length) {
+      list.innerHTML = `<p class="empty">승인 요청이 없습니다. 팀 편집에서 팀원에게 광고 도구(네이버 검색광고·메타 광고·구글 Ads)를 주면, 그 팀원이 광고 변경을 여기로 요청합니다.</p>`;
+      return;
+    }
+    actions.forEach((a) => {
+      const card = document.createElement("div");
+      card.className = `task action ${a.status}`;
+      card.innerHTML = `<header><h3></h3><span class="pill ${ACTION_PILLS[a.status]}"></span></header>
+        <p class="who"></p><p class="cost"></p><details><summary>요청 내용</summary><pre class="request"></pre></details>`;
+      card.querySelector("h3").textContent = a.summary;
+      card.querySelector(".pill").textContent = ACTION_LABELS[a.status];
+      card.querySelector(".who").textContent = `${a.platform_label} · ${a.agent || "팀원"} 요청 · ${clock(a.created)}`
+        + (a.decided_by ? ` · ${a.decided_by} ${a.status === "rejected" ? "거절" : "승인"}` : "");
+      card.querySelector(".cost").textContent = a.daily_cost_krw ? `하루 최대 비용 증가: ${a.daily_cost_krw.toLocaleString()}원` : "추가 비용 없음 (요청자 기준)";
+      card.querySelector(".request").textContent = `${a.method} ${a.path}${Object.keys(a.params || {}).length ? `\nparams: ${JSON.stringify(a.params, null, 1)}` : ""}${a.body != null ? `\nbody: ${JSON.stringify(a.body, null, 1)}` : ""}`;
+      if (a.result) {
+        const d = document.createElement("details");
+        d.innerHTML = `<summary>${a.status === "failed" ? "오류" : "플랫폼 응답"}</summary><pre></pre>`;
+        d.querySelector("pre").textContent = a.result;
+        if (a.status === "failed") d.open = true;
+        card.append(d);
+      }
+      if (a.status === "pending") {
+        const row = document.createElement("div");
+        row.className = "actions";
+        if (isAdmin) {
+          const decide = (verb, question) => async () => {
+            if (!confirm(question)) return;
+            const ok = await api(`/api/actions/${a.id}/${verb}`, "POST");
+            if (ok) loadActions();
+          };
+          row.append(
+            button("✅ 승인하고 실행", "이 요청을 광고 플랫폼에 그대로 보냅니다", decide("approve", `${a.platform_label}에 이 변경을 반영할까요?\n\n${a.summary}`), { cls: "primary" }),
+            button("거절", "실행하지 않고 닫습니다", decide("reject", "이 요청을 거절할까요?")),
+          );
+        } else {
+          row.innerHTML = `<span class="muted">관리자 승인 대기 중</span>`;
+        }
+        card.append(row);
+      }
+      list.append(card);
+    });
   }
 
   function renderStats() {
@@ -1082,12 +1170,21 @@
     if (!isManager) grid.append(field("팀 이름", control(person, "team")));
     grid.append(field("모델", control(person, "model", "model")));
     if (!isManager) {
-      const search = control({ get on() { return person.tools.includes("web_search"); }, set on(v) { person.tools = v ? ["web_search"] : []; } }, "on", "checkbox");
-      const wrap = field("웹 검색 도구", search);
-      wrap.classList.add("check");
-      grid.append(wrap);
     }
     box.append(grid);
+    if (!isManager) {
+      // Ad tools only ask; an admin approves each change in the 승인 tab.
+      const picks = document.createElement("div");
+      picks.className = "tool-picks";
+      meta.tools.forEach((name) => {
+        const on = { get on() { return person.tools.includes(name); }, set on(v) { person.tools = v ? [...person.tools, name] : person.tools.filter((t) => t !== name); } };
+        const label = TOOL_LABELS[name] || name;
+        const wrap = field(meta.tools_ready[name] === false ? `${label} (키 없음)` : label, control(on, "on", "checkbox"));
+        wrap.classList.add("check");
+        picks.append(wrap);
+      });
+      box.append(field("도구 (광고 도구의 변경은 승인 탭에서 관리자가 승인해야 반영)", picks, true));
+    }
 
     const looks = document.createElement("div");
     looks.className = "look-row";
@@ -1183,6 +1280,10 @@
     ws.onopen = () => { conn.classList.add("on"); conn.lastChild.textContent = "연결됨"; delay = 500; };
     ws.onmessage = (msg) => {
       const ev = JSON.parse(msg.data);
+      if (ev.kind === "actions") {
+        loadActions();
+        return;
+      }
       if (ev.kind === "orders") {
         loadOrders();
         loadProjects();
@@ -1211,7 +1312,7 @@
   async function refreshStatus() {
     try {
       status = await (await fetch("/api/status")).json();
-      meta = { models: status.models, tools: status.tools, max_members: status.max_members };
+      meta = { models: status.models, tools: status.tools, tools_ready: status.tools_ready || {}, max_members: status.max_members };
       renderRecordings();
       $("#order-btn").disabled = !status.has_api_key;
       $("#stop-btn").disabled = false;
@@ -1321,7 +1422,7 @@
     if (!closeEditor()) return;
     selectedProject = id;
     try { localStorage.setItem("office.project", id); } catch { /* storage blocked */ }
-    await Promise.all([loadTeam(), loadOrders()]);
+    await Promise.all([loadTeam(), loadOrders(), loadActions()]);
     renderBusinesses();
     await showProjectState();
     renderAll();
@@ -1425,10 +1526,11 @@
 
   async function start() {
     resetState();
+    fetch("/api/me").then((r) => r.json()).then((user) => { isAdmin = Boolean(user.is_admin); renderActions(); }).catch(() => {});
     await refreshStatus();
     try {
       await loadProjects();
-      await Promise.all([loadTeam(), loadOrders()]);
+      await Promise.all([loadTeam(), loadOrders(), loadActions()]);
       await showProjectState();
     } catch {
       buildIdle(); /* fall back to the built-in roster */

@@ -4,6 +4,7 @@ Everything lives under ``data/`` (gitignored) as small JSON files:
 
     data/projects/<id>.json   one business: name and team
     data/orders.json          every instruction, oldest first
+    data/actions.json         ad changes agents asked for, waiting for an admin's approval
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import re
 import secrets
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -26,8 +27,10 @@ STORAGE_DIR = Path(os.getenv("OFFICE_STORAGE_DIR") or APP_DIR)
 DATA_DIR = STORAGE_DIR / "data"
 PROJECTS_DIR = DATA_DIR / "projects"
 ORDERS_FILE = DATA_DIR / "orders.json"
+ACTIONS_FILE = DATA_DIR / "actions.json"
 LEGACY_TEAM_FILE = APP_DIR / "team.json"  # the single team saved before businesses existed
 
+ActionStatus = Literal["pending", "running", "rejected", "done", "failed"]
 OrderStatus = Literal["queued", "running", "done", "failed", "stopped", "cancelled"]
 
 
@@ -51,6 +54,27 @@ class Order(BaseModel):
     tokens: int | None = None
     error: str | None = None
     resume_of: str | None = None  # an interrupted order whose finished work this one reuses
+
+
+class Action(BaseModel):
+    """One ad platform API call an agent asked for; it runs only once an admin approves it."""
+
+    id: str
+    project_id: str
+    order_id: str
+    agent: str = ""  # who asked
+    platform: Literal["naver", "meta", "google"]
+    method: Literal["POST", "PUT", "DELETE"]
+    path: str
+    params: dict[str, Any] = {}
+    body: Any = None
+    summary: str
+    daily_cost_krw: int = 0
+    status: ActionStatus = "pending"
+    created: float = Field(default_factory=time.time)
+    decided: float | None = None
+    decided_by: str | None = None
+    result: str | None = None  # the platform's response, or the error
 
 
 def new_id() -> str:
@@ -126,3 +150,18 @@ def save_orders(orders: list[Order]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     payload = "[\n" + ",\n".join(o.model_dump_json() for o in orders) + "\n]\n"
     ORDERS_FILE.write_text(payload, encoding="utf-8")
+
+
+# ---------- ad changes awaiting approval ----------
+
+
+def load_actions() -> list[Action]:
+    if not ACTIONS_FILE.exists():
+        return []
+    return [Action.model_validate(a) for a in json.loads(ACTIONS_FILE.read_text(encoding="utf-8"))]
+
+
+def save_actions(actions: list[Action]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    payload = "[\n" + ",\n".join(a.model_dump_json() for a in actions) + "\n]\n"
+    ACTIONS_FILE.write_text(payload, encoding="utf-8")
