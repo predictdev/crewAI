@@ -1,5 +1,5 @@
 /* One quiet dark theme: surfaces instead of borders, one accent, plain labels.
-   The pixel office is the only playful part of the screen. */
+   The office illustration is the only playful part of the screen. */
 :root {
   --bg: #0f1014;
   --panel: #17181e;       /* cards, sidebar items, feed */
@@ -156,46 +156,45 @@ main { padding: 0 0 24px; }
 
 .office-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }
 .stage { position: relative; align-self: start; border-radius: var(--radius); overflow: hidden; background: #0b0b0f; }
-.stage canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.stage canvas { display: block; width: 100%; height: auto; }
 .stage canvas.editing { touch-action: none; }
 .overlay { position: absolute; inset: 0; pointer-events: none; }
 
-/* labels, nameplates and bubbles belong to the pixel-art scene */
+/* labels, nameplates and bubbles sit on the illustration */
 .label {
   position: absolute; transform: translate(-50%, 0);
-  font-size: 11px; font-weight: 800; padding: 1px 9px; border-radius: 5px;
-  color: #fff; white-space: nowrap; border: 2px solid #16131d;
-  box-shadow: 0 2px 0 rgba(0,0,0,.45); text-shadow: 0 1px 0 rgba(0,0,0,.35);
+  font-size: 10.5px; font-weight: 600; line-height: 1; padding: 4px 10px; border-radius: 0 0 8px 8px;
+  color: #fff; white-space: nowrap; letter-spacing: .01em;
 }
-.label.add { background: #5b5670; }
+.label.add { background: #2f313c; color: #b8bbc8; border-radius: 20px; }
 .nameplate {
   position: absolute; transform: translate(-50%, 0); text-align: center;
-  font-size: 10px; line-height: 1.2; white-space: nowrap;
+  font-size: 10px; line-height: 1.25; white-space: nowrap;
 }
-.nameplate b { display: inline-block; background: #fffdf5; color: #1d1a26; padding: 0 6px; border-radius: 4px; border: 1.5px solid #16131d; font-weight: 800; }
-.nameplate span { display: block; width: max-content; margin: 1px auto 0; font-size: 8.5px; font-weight: 700; padding: 0 5px; border-radius: 3px; background: #e0904a; color: #fff; border: 1px solid #16131d; }
-.nameplate.manager span { background: #c9a227; color: #1d1a26; }
+.nameplate b { display: inline-block; background: rgba(28,29,36,.86); color: #fff; padding: 1px 7px; border-radius: 6px; font-weight: 600; }
+.nameplate span { display: block; width: max-content; margin: 2px auto 0; font-size: 8.5px; font-weight: 500; padding: 0 5px; border-radius: 4px; background: rgba(28,29,36,.55); color: #e6e7ee; }
+.nameplate.manager span { background: #f5c443; color: #3a2a05; }
 .bubble {
   position: absolute; transform: translate(-50%, -100%);
-  max-width: 30%; padding: 5px 8px; border-radius: 6px;
-  background: #fffdf5; color: #1d1a26; font-size: 11px; line-height: 1.35;
-  border: 2px solid #1d1a26; box-shadow: 0 2px 0 rgba(0,0,0,.35);
+  max-width: 30%; padding: 5px 9px; border-radius: 9px;
+  background: #fff; color: #23252e; font-size: 11px; line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(0,0,0,.28);
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  /* Two lines + top padding + borders; overflow clips at the padding box, so a
-     bottom-padding allowance would let a third line peek out. */
-  max-height: calc(2.7em + 9px);
+  /* Two lines plus padding; overflow clips at the padding box, so a bottom
+     allowance would let a third line peek out. */
+  max-height: calc(2.8em + 5px);
   transition: opacity .25s;
 }
 .bubble::after {
-  content: ""; position: absolute; left: 50%; bottom: -7px; margin-left: -5px;
-  border: 5px solid transparent; border-top-color: #1d1a26; border-bottom: 0;
+  content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -5px;
+  border: 5px solid transparent; border-top-color: var(--tail, #fff); border-bottom: 0;
 }
 .bubble.hidden { opacity: 0; }
 .bubble.from-left { transform: translate(-14px, -100%); max-width: 46%; }
 .bubble.from-left::after { left: 14px; }
-.bubble.tool { background: #e8f0ff; }
-.bubble.done { background: #e4fbef; }
-.bubble.error { background: #ffe8e8; }
+.bubble.tool { background: #eaf0ff; --tail: #eaf0ff; }
+.bubble.done { background: #e3f8ee; --tail: #e3f8ee; }
+.bubble.error { background: #fde9e9; --tail: #fde9e9; }
 
 /* ---------- activity feed ---------- */
 .feed { background: var(--panel); border-radius: var(--radius); padding: 14px; max-height: 560px; overflow: auto; }

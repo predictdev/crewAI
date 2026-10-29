@@ -1,4 +1,4 @@
-"""AI Office: give businesses instructions and watch their teams work in a pixel-art office.
+"""AI Office: give businesses instructions and watch their teams work in an illustrated office.
 
     .venv/bin/python apps/ai_office/server.py   ->  http://localhost:8765
 

@@ -725,7 +725,7 @@
       renderBubbles();
     }
     const { W, H, rooms } = sc.layout;
-    // Back the canvas with enough device pixels that each logical pixel is a crisp square.
+    // Back the canvas with enough device pixels that the drawing stays sharp.
     const S = Math.max(1, Math.ceil(((canvas.clientWidth || W) * devicePixelRatio) / W));
     if (canvas.width !== W * S || canvas.height !== H * S) {
       canvas.width = W * S;

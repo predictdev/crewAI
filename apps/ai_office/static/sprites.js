@@ -1,20 +1,21 @@
-// Procedural pixel art for the office. The logical canvas grows with the team:
-// one room per team (one desk per member) under the lobby, wrapping into rows.
-// office.js scales the context to the device's pixel density, so one logical
-// pixel stays a crisp square on screen.
+// Flat vector illustration of the office, drawn on a canvas. The logical canvas
+// grows with the team: one room per team (one desk per member) under the lobby,
+// wrapping into rows. office.js scales the context to the device's pixel density,
+// so shapes stay sharp at any size; positions are in logical units.
+// (The global stays `Pixel` because office.js and older recordings use it.)
 (() => {
   const MIN_W = 384, H = 232; // H: height with one row of rooms
   const ROOM_GAP = 6, ROOM_Y = 88, ROOM_H = 136, ROOM_PAD = 8, DESK_GAP = 104;
   const ROW_MAX = 624; // five single-desk rooms
-  const OUT = "#16131d"; // outline
+  const INK = "#262833"; // darkest line and detail color
 
-  const PALETTES = [
-    { floor: ["#2a3a5c", "#30436a"], wall: "#1c2742", trim: "#4a7ae0" },
-    { floor: ["#3d2d55", "#463463"], wall: "#2a1f3d", trim: "#a066e0" },
-    { floor: ["#234a36", "#295540"], wall: "#183322", trim: "#46c27a" },
-    { floor: ["#4d3626", "#5a402d"], wall: "#33241a", trim: "#e0904a" },
-    { floor: ["#22454f", "#28515c"], wall: "#173138", trim: "#46c3e0" },
-  ];
+  // One accent per team; walls, floors and rugs are light tints of it.
+  const ACCENTS = ["#5b7cfa", "#9468ee", "#2fae76", "#e5874a", "#2aa9c4"];
+  const PALETTES = ACCENTS.map((trim) => ({
+    trim,
+    wall: mix(trim, "#f6f3ee", 0.9),
+    floor: [mix(trim, "#ebe5dc", 0.86), mix(trim, "#e4ddd2", 0.78)],
+  }));
 
   // Fallback looks for recordings made before the team editor existed.
   const LOOKS = [
@@ -54,278 +55,381 @@
 
   // ---------- primitives ----------
 
-  function px(ctx, x, y, w, h, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(Math.round(x), Math.round(y), w, h);
+  function rgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [n >> 16, (n >> 8) & 255, n & 255];
   }
 
-  // Rectangle with the four corner pixels cut, the basic pixel-art "rounded" box.
-  function rr(ctx, x, y, w, h, color) {
-    px(ctx, x + 1, y, w - 2, h, color);
-    px(ctx, x, y + 1, w, h - 2, color);
-  }
-
-  // Outlined box: a 1px OUT border around a filled body.
-  function box(ctx, x, y, w, h, fill) {
-    rr(ctx, x, y, w, h, OUT);
-    rr(ctx, x + 1, y + 1, w - 2, h - 2, fill);
+  // a weighted toward b by k (0..1).
+  function mix(a, b, k) {
+    const [r1, g1, b1] = rgb(a), [r2, g2, b2] = rgb(b);
+    const f = (x, y) => Math.round(x + (y - x) * k).toString(16).padStart(2, "0");
+    return `#${f(r1, r2)}${f(g1, g2)}${f(b1, b2)}`;
   }
 
   // amt > 0 lightens toward white, amt < 0 darkens toward black.
-  function shade(hex, amt) {
-    const n = parseInt(hex.slice(1), 16);
-    const f = (v) => Math.round(amt > 0 ? v + (255 - v) * amt : v * (1 + amt));
-    return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+  const shade = (hex, amt) => mix(hex, amt > 0 ? "#ffffff" : "#000000", Math.abs(amt));
+
+  function rect(ctx, x, y, w, h, r, fill) {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fill();
   }
 
-  function checker(ctx, x, y, w, h, colors, size = 8) {
-    for (let yy = 0; yy < h; yy += size) {
-      for (let xx = 0; xx < w; xx += size) {
-        px(ctx, x + xx, y + yy, Math.min(size, w - xx), Math.min(size, h - yy), colors[((xx + yy) / size) % 2]);
-      }
-    }
+  function ellipse(ctx, cx, cy, rx, ry, fill) {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Soft contact shadow on the floor.
+  const floorShadow = (ctx, cx, cy, rx, ry, alpha = 0.16) => ellipse(ctx, cx, cy, rx, ry, `rgba(30,24,20,${alpha})`);
+
+  function vertical(ctx, x, y, w, h, top, bottom) {
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
   }
 
   // ---------- characters ----------
 
-  // 22x30 chibi seen from the front; the desk covers the lower body.
+  // Seated figure seen from the front in a 22x30 box; the desk covers the lower body.
   function drawCharacter(ctx, x, y, look, pose = {}) {
-    y += pose.bob ? Math.round(pose.bob) : 0;
-    const hair = look.hair, hairHi = shade(hair, 0.35), hairLo = shade(hair, -0.3);
-    const skin = look.skin, skinLo = shade(skin, -0.14);
-    const shirt = look.shirt, shirtLo = shade(shirt, -0.28), shirtHi = shade(shirt, 0.22);
+    y += pose.bob || 0;
+    const cx = x + 11, cy = y + 9.5; // head center
+    const hair = look.hair, skin = look.skin, shirt = look.shirt;
+    const skinLo = shade(skin, -0.12);
 
-    if (look.longHair) box(ctx, x + 1, y + 4, 20, 21, hairLo);
+    if (look.longHair) rect(ctx, x + 1.5, y + 3, 19, 21, 8, shade(hair, -0.18));
 
-    // Torso, collar, tie.
-    box(ctx, x + 3, y + 18, 16, 13, shirt);
-    px(ctx, x + 15, y + 20, 3, 10, shirtLo);
-    px(ctx, x + 5, y + 20, 1, 8, shirtHi);
-    px(ctx, x + 8, y + 19, 6, 1, "#f4f1ea");
-    px(ctx, x + 8, y + 20, 1, 1, "#f4f1ea");
-    px(ctx, x + 13, y + 20, 1, 1, "#f4f1ea");
+    // Torso with a soft side shade, collar and optional tie.
+    rect(ctx, x + 3, y + 17.5, 16, 14, [7, 7, 3, 3], shirt);
+    rect(ctx, x + 13.5, y + 19, 5.5, 12, [0, 6, 3, 0], shade(shirt, -0.12));
+    ctx.fillStyle = "#f7f5f0";
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, y + 17.6);
+    ctx.lineTo(cx, y + 21.5);
+    ctx.lineTo(cx + 4, y + 17.6);
+    ctx.closePath();
+    ctx.fill();
     if (look.tie) {
-      px(ctx, x + 10, y + 20, 2, 2, look.tie);
-      px(ctx, x + 10, y + 22, 2, 5, shade(look.tie, -0.2));
+      ctx.fillStyle = look.tie;
+      ctx.beginPath();
+      ctx.moveTo(cx - 1.2, y + 20);
+      ctx.lineTo(cx + 1.2, y + 20);
+      ctx.lineTo(cx + 1.8, y + 26);
+      ctx.lineTo(cx, y + 27.5);
+      ctx.lineTo(cx - 1.8, y + 26);
+      ctx.closePath();
+      ctx.fill();
     }
 
     // Arms down the sides; hands alternate on the keyboard while typing.
-    box(ctx, x, y + 20, 5, 9, shirtLo);
-    box(ctx, x + 17, y + 20, 5, 9, shirtLo);
-    const left = pose.typing && pose.frame % 2 === 0 ? 25 : 27;
-    const right = pose.typing && pose.frame % 2 === 1 ? 25 : 27;
-    box(ctx, x + 1, y + left, 4, 4, skin);
-    box(ctx, x + 17, y + right, 4, 4, skin);
+    const sleeve = shade(shirt, -0.08);
+    rect(ctx, x + 0.5, y + 19.5, 5, 9.5, 2.5, sleeve);
+    rect(ctx, x + 16.5, y + 19.5, 5, 9.5, 2.5, sleeve);
+    const left = pose.typing && pose.frame % 2 === 0 ? 26 : 27.5;
+    const right = pose.typing && pose.frame % 2 === 1 ? 26 : 27.5;
+    ellipse(ctx, x + 3, y + left, 2.3, 2.1, skin);
+    ellipse(ctx, x + 19, y + right, 2.3, 2.1, skin);
 
-    // Neck and head.
-    px(ctx, x + 9, y + 17, 4, 2, skinLo);
-    box(ctx, x + 2, y + 1, 18, 18, skin);
-    px(ctx, x + 4, y + 16, 14, 1, skinLo);
+    // Neck, ears and head.
+    rect(ctx, cx - 2, y + 15, 4, 3.5, 1, skinLo);
+    ellipse(ctx, cx - 8.4, cy + 1.5, 1.6, 2.1, skinLo);
+    ellipse(ctx, cx + 8.4, cy + 1.5, 1.6, 2.1, skinLo);
+    ellipse(ctx, cx, cy, 8.3, 8.6, skin);
 
-    // Hair: cap, highlight, fringe, side locks.
-    rr(ctx, x + 2, y, 18, 9, OUT);
-    rr(ctx, x + 3, y + 1, 16, 7, hair);
-    px(ctx, x + 3, y + 8, 16, 1, hair);
-    px(ctx, x + 4, y + 9, 3, 1, hair);
-    px(ctx, x + 9, y + 9, 2, 1, hair);
-    px(ctx, x + 14, y + 9, 3, 1, hair);
-    px(ctx, x + 6, y + 2, 5, 1, hairHi);
-    px(ctx, x + 5, y + 3, 2, 1, hairHi);
-    const lock = look.longHair ? 11 : 5;
-    px(ctx, x + 3, y + 8, 2, lock, hair);
-    px(ctx, x + 17, y + 8, 2, lock, hair);
+    // Hair: a cap with a swept fringe, plus side locks when long.
+    ctx.fillStyle = hair;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8.9, cy + 1.5);
+    ctx.arc(cx, cy - 0.3, 8.9, Math.PI * 1.03, Math.PI * 1.97);
+    ctx.lineTo(cx + 8.9, cy + 1.5);
+    ctx.quadraticCurveTo(cx + 7.6, cy - 3.6, cx + 2.5, cy - 3.4);
+    ctx.quadraticCurveTo(cx - 2.5, cy - 3.2, cx - 6, cy - 5.2);
+    ctx.quadraticCurveTo(cx - 7.6, cy - 2.4, cx - 8.9, cy + 1.5);
+    ctx.fill();
+    if (look.longHair) {
+      rect(ctx, cx - 9.6, cy - 1, 3.2, 12, 1.6, hair);
+      rect(ctx, cx + 6.4, cy - 1, 3.2, 12, 1.6, hair);
+    }
+    ctx.strokeStyle = "rgba(255,255,255,0.28)";
+    ctx.lineWidth = 1;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(cx - 1, cy - 1.5, 6, Math.PI * 1.2, Math.PI * 1.45);
+    ctx.stroke();
 
     // Face.
     if (pose.blink) {
-      px(ctx, x + 6, y + 13, 3, 1, "#2a2238");
-      px(ctx, x + 13, y + 13, 3, 1, "#2a2238");
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(cx - 4.3, cy + 2.6);
+      ctx.lineTo(cx - 2.1, cy + 2.6);
+      ctx.moveTo(cx + 2.1, cy + 2.6);
+      ctx.lineTo(cx + 4.3, cy + 2.6);
+      ctx.stroke();
     } else {
-      px(ctx, x + 6, y + 11, 3, 3, "#2a2238");
-      px(ctx, x + 13, y + 11, 3, 3, "#2a2238");
-      px(ctx, x + 6, y + 11, 1, 1, "#ffffff");
-      px(ctx, x + 13, y + 11, 1, 1, "#ffffff");
+      ellipse(ctx, cx - 3.2, cy + 2.4, 1, 1.3, INK);
+      ellipse(ctx, cx + 3.2, cy + 2.4, 1, 1.3, INK);
+      ellipse(ctx, cx - 2.9, cy + 1.9, 0.35, 0.35, "#ffffff");
+      ellipse(ctx, cx + 3.5, cy + 1.9, 0.35, 0.35, "#ffffff");
     }
-    px(ctx, x + 4, y + 14, 2, 1, "#f4a3a3");
-    px(ctx, x + 16, y + 14, 2, 1, "#f4a3a3");
-    px(ctx, x + 10, y + 15, 2, 1, "#a0524a");
+    ellipse(ctx, cx - 5.4, cy + 4.6, 1.5, 0.9, "rgba(240,120,120,0.28)");
+    ellipse(ctx, cx + 5.4, cy + 4.6, 1.5, 0.9, "rgba(240,120,120,0.28)");
+    ctx.strokeStyle = shade(skin, -0.45);
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.arc(cx, cy + 4.6, 1.3, Math.PI * 0.2, Math.PI * 0.8);
+    ctx.stroke();
 
     if (look.crown) {
-      rr(ctx, x + 5, y - 7, 12, 6, OUT);
-      px(ctx, x + 6, y - 4, 10, 2, "#ffd36b");
-      px(ctx, x + 6, y - 6, 2, 2, "#ffd36b");
-      px(ctx, x + 10, y - 6, 2, 2, "#ffd36b");
-      px(ctx, x + 14, y - 6, 2, 2, "#ffd36b");
-      px(ctx, x + 10, y - 4, 2, 1, "#d64545");
-      px(ctx, x + 6, y - 4, 10, 1, "#ffe8a3");
+      ctx.fillStyle = "#f5c443";
+      ctx.beginPath();
+      ctx.moveTo(cx - 5, y - 1.5);
+      ctx.lineTo(cx - 5.5, y - 6.5);
+      ctx.lineTo(cx - 2.6, y - 4);
+      ctx.lineTo(cx, y - 7.5);
+      ctx.lineTo(cx + 2.6, y - 4);
+      ctx.lineTo(cx + 5.5, y - 6.5);
+      ctx.lineTo(cx + 5, y - 1.5);
+      ctx.closePath();
+      ctx.fill();
+      ellipse(ctx, cx, y - 3.2, 0.9, 0.9, "#e0574f");
     }
   }
 
   // ---------- furniture ----------
 
   function drawChair(ctx, cx, deskY) {
-    box(ctx, cx - 13, deskY - 24, 26, 20, "#5d4a42");
-    px(ctx, cx - 11, deskY - 22, 22, 2, "#6e5850");
+    rect(ctx, cx - 12.5, deskY - 25, 25, 23, 7, "#3a3e4b");
+    rect(ctx, cx - 10, deskY - 23, 20, 3, 1.5, "rgba(255,255,255,0.1)");
   }
 
   function screenColor(screen, t) {
-    if (screen === "on") return Math.floor(t / 180) % 2 ? "#59d0ff" : "#4ab8e8";
-    if (screen === "think") return "#7a6cff";
-    if (screen === "done") return "#4fd18b";
-    if (screen === "error") return "#ff6b6b";
-    return "#262b38";
+    if (screen === "on") return Math.floor(t / 180) % 2 ? "#4fb6ef" : "#47a9e2";
+    if (screen === "think") return "#8b7cf6";
+    if (screen === "done") return "#3fcf8e";
+    if (screen === "error") return "#f0696c";
+    return "#3a3f4c";
   }
 
   function drawDesk(ctx, cx, deskY, screen, t) {
-    // Monitor (facing the viewer) on the right of the desk.
-    box(ctx, cx + 7, deskY - 17, 22, 16, "#2b2838");
-    px(ctx, cx + 9, deskY - 15, 18, 11, screenColor(screen, t));
-    if (screen === "on") {
-      for (let i = 0; i < 4; i++) px(ctx, cx + 11, deskY - 13 + i * 2, 3 + ((Math.floor(t / 120) + i * 3) % 11), 1, "#e8f7ff");
-    } else if (screen !== "off") {
-      px(ctx, cx + 9, deskY - 15, 18, 1, "rgba(255,255,255,0.35)");
+    floorShadow(ctx, cx, deskY + 21, 30, 2.6);
+
+    // Monitor on a stand, to the right of the keyboard.
+    if (screen !== "off") {
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      rect(ctx, cx + 4, deskY - 20, 28, 21, 6, screenColor(screen, t));
+      ctx.restore();
     }
-    px(ctx, cx + 16, deskY - 2, 4, 2, OUT);
+    rect(ctx, cx + 16.5, deskY - 3, 3, 3, 0.5, "#8f939f");
+    rect(ctx, cx + 13.5, deskY - 1.2, 9, 1.4, 0.7, "#8f939f");
+    rect(ctx, cx + 7, deskY - 17, 22, 15, 2, "#2b2e38");
+    rect(ctx, cx + 8.2, deskY - 15.8, 19.6, 12.6, 1.2, screenColor(screen, t));
+    if (screen === "on") {
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      for (let i = 0; i < 4; i++) {
+        const len = 3 + ((Math.floor(t / 120) + i * 3) % 11);
+        ctx.beginPath();
+        ctx.roundRect(cx + 10, deskY - 13.6 + i * 2.6, len, 1.1, 0.5);
+        ctx.fill();
+      }
+    } else if (screen !== "off") {
+      rect(ctx, cx + 8.2, deskY - 15.8, 19.6, 4, [1.2, 1.2, 0, 0], "rgba(255,255,255,0.18)");
+    }
 
-    // Desk body: top surface, front panels with drawers, legs, shadow.
-    px(ctx, cx - 28, deskY + 20, 56, 2, "rgba(0,0,0,0.28)");
-    px(ctx, cx - 28, deskY + 15, 3, 6, OUT);
-    px(ctx, cx + 25, deskY + 15, 3, 6, OUT);
-    box(ctx, cx - 30, deskY - 1, 60, 18, "#b07a45");
-    px(ctx, cx - 29, deskY, 58, 4, "#e0b077");
-    px(ctx, cx - 29, deskY, 58, 1, "#f2cc94");
-    px(ctx, cx - 29, deskY + 4, 58, 1, "#8a5c33");
-    px(ctx, cx - 25, deskY + 6, 21, 8, "#9a6a3a");
-    px(ctx, cx + 4, deskY + 6, 21, 8, "#9a6a3a");
-    px(ctx, cx - 17, deskY + 9, 5, 1, "#e0b077");
-    px(ctx, cx + 12, deskY + 9, 5, 1, "#e0b077");
+    // Desk: legs, front panel with drawers, top.
+    rect(ctx, cx - 27, deskY + 14, 2.4, 7, 1, "#5b5f6b");
+    rect(ctx, cx + 24.6, deskY + 14, 2.4, 7, 1, "#5b5f6b");
+    rect(ctx, cx - 29, deskY + 2, 58, 14, [0, 0, 3, 3], "#c99a6a");
+    rect(ctx, cx - 29, deskY + 2, 58, 2, 0, "rgba(0,0,0,0.12)");
+    rect(ctx, cx + 4, deskY + 6, 21, 7.5, 1.5, "#d6aa7a");
+    rect(ctx, cx + 12, deskY + 9.2, 5, 1.1, 0.5, "#a97a4c");
+    rect(ctx, cx - 31, deskY - 1.5, 62, 4.5, 2, "#e8c9a0");
+    rect(ctx, cx - 31, deskY - 1.5, 62, 1.3, [2, 2, 0, 0], "#f3dcbb");
 
-    // Keyboard and mug on the desk top.
-    px(ctx, cx - 9, deskY + 1, 16, 2, "#ece8f4");
-    px(ctx, cx - 9, deskY + 2, 16, 1, "#c4bed4");
-    box(ctx, cx - 25, deskY - 5, 6, 6, "#f4f1ea");
-    px(ctx, cx - 24, deskY - 4, 4, 1, "#6b4a2e");
+    // Keyboard and mug.
+    rect(ctx, cx - 10, deskY - 0.8, 17, 2.6, 1, "#f2f2f5");
+    rect(ctx, cx - 9, deskY + 0.6, 15, 0.6, 0.3, "#c8cad3");
+    rect(ctx, cx - 25.5, deskY - 6, 5.5, 6, [1, 1, 1.8, 1.8], "#ffffff");
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.arc(cx - 19.6, deskY - 3, 1.5, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+    rect(ctx, cx - 25, deskY - 5.6, 4.5, 1.2, 0.5, "#7a5236");
   }
 
   function drawPlant(ctx, x, y) {
-    px(ctx, x + 4, y, 2, 3, "#2f8f55");
-    box(ctx, x + 1, y + 1, 4, 6, "#46c27a");
-    box(ctx, x + 5, y + 2, 5, 5, "#3fae6a");
-    px(ctx, x + 2, y + 2, 1, 2, "#7ee0a4");
-    box(ctx, x, y + 7, 10, 7, "#c97448");
-    px(ctx, x + 1, y + 8, 8, 1, "#e08a5a");
+    floorShadow(ctx, x + 5, y + 14, 5.5, 1.3, 0.14);
+    const leaves = [[2.5, 4, -0.5], [7.5, 3.5, 0.5], [5, 1.5, 0], [3.5, 6.5, -0.9], [7, 6, 0.9]];
+    leaves.forEach(([lx, ly, a], i) => {
+      ctx.fillStyle = i % 2 ? "#3aa86b" : "#4cc07f";
+      ctx.beginPath();
+      ctx.ellipse(x + lx, y + ly, 2.2, 3.8, a, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.fillStyle = "#e9e4dc";
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, y + 7.5);
+    ctx.lineTo(x + 9.5, y + 7.5);
+    ctx.lineTo(x + 8.5, y + 14);
+    ctx.lineTo(x + 1.5, y + 14);
+    ctx.closePath();
+    ctx.fill();
+    rect(ctx, x, y + 7, 10, 1.6, 0.8, "#d6cfc4");
   }
 
-  function drawWindows(ctx, x, y, panes, t) {
-    for (let i = 0; i < panes; i++) {
-      const wx = x + i * 16;
-      box(ctx, wx, y, 15, 13, "#6d8fc6");
-      px(ctx, wx + 1, y + 1, 13, 5, "#8fb0e0");
-      px(ctx, wx + 7, y + 1, 1, 11, OUT);
-      px(ctx, wx + 1, y + 6, 13, 1, OUT);
-      const cloud = (Math.floor(t / 500) + i * 5) % 16;
-      if (cloud < 11) px(ctx, wx + 1 + cloud, y + 3, 3, 1, "#eef4ff");
-    }
+  function drawWindow(ctx, x, y, w, h, t) {
+    rect(ctx, x - 1, y - 1, w + 2, h + 2, 2.5, "#ffffff");
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, "#9fcdf5");
+    g.addColorStop(1, "#d7ecfb");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 1.5);
+    ctx.fill();
+    // A cloud drifting across.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    const cxCloud = x - 8 + ((t / 90) % (w + 16));
+    ellipse(ctx, cxCloud, y + h * 0.4, 4, 1.6, "rgba(255,255,255,0.9)");
+    ellipse(ctx, cxCloud + 2.5, y + h * 0.4 - 1.2, 2.4, 1.6, "rgba(255,255,255,0.9)");
+    ctx.restore();
+    rect(ctx, x + w / 2 - 0.5, y, 1, h, 0, "#ffffff");
   }
 
   function drawBoard(ctx, x, y, notes) {
-    box(ctx, x, y, 30, 17, "#f6f3ea");
-    px(ctx, x + 2, y + 14, 26, 1, "#c8c2b4");
-    (notes || []).forEach((color, i) => px(ctx, x + 3 + (i % 4) * 6, y + 3 + Math.floor(i / 4) * 5, 4, 4, color));
+    rect(ctx, x, y, 32, 18, 2, "#ffffff");
+    rect(ctx, x, y + 16.5, 32, 1.5, [0, 0, 2, 2], "#dcdde3");
+    (notes || []).forEach((color, i) => rect(ctx, x + 3 + (i % 4) * 7, y + 2.5 + Math.floor(i / 4) * 4.6, 5, 3.6, 0.6, color));
+    if (!(notes || []).length) {
+      ctx.fillStyle = "#d2d4dc";
+      [[4, 5, 18], [4, 8.5, 12], [4, 12, 15]].forEach(([dx, dy, len]) => rect(ctx, x + dx, y + dy, len, 1, 0.5, "#d2d4dc"));
+    }
   }
 
   function drawShelf(ctx, x, y) {
-    box(ctx, x, y, 18, 20, "#6e4a2c");
-    const books = ["#d64545", "#3d6bd6", "#ffd36b", "#3fae6a", "#9a5bd6"];
+    rect(ctx, x, y, 20, 20, 1.5, "#d9c2a3");
+    const books = ["#e0574f", "#5b7cfa", "#f5c443", "#2fae76", "#9468ee", "#2aa9c4"];
     for (let row = 0; row < 2; row++) {
-      px(ctx, x + 1, y + 9 + row * 9, 16, 1, OUT);
-      for (let i = 0; i < 5; i++) px(ctx, x + 2 + i * 3, y + 2 + row * 9 + (i % 2), 2, 7 - (i % 2), books[(i + row * 2) % books.length]);
+      const by = y + 2 + row * 9.5;
+      for (let i = 0; i < 5; i++) {
+        const tall = 6.5 - (i % 2) * 1.2;
+        rect(ctx, x + 2 + i * 3.3, by + (7 - tall), 2.7, tall, 0.5, books[(i + row * 2) % books.length]);
+      }
+      rect(ctx, x + 1, by + 7, 18, 1.2, 0.4, "#b99a74");
     }
   }
 
   function drawClock(ctx, x, y, t) {
-    box(ctx, x, y, 9, 9, "#f4f1ea");
-    px(ctx, x + 4, y + 2, 1, 3, OUT);
-    const tick = Math.floor(t / 1000) % 4;
-    const hand = [[5, 4, 2, 1], [4, 5, 1, 2], [2, 4, 2, 1], [4, 2, 1, 2]][tick];
-    px(ctx, x + hand[0], y + hand[1], hand[2], hand[3], "#d64545");
-  }
-
-  // Pennant string along a wall.
-  function drawBunting(ctx, x, y, w, color) {
-    px(ctx, x, y, w, 1, "rgba(255,255,255,0.18)");
-    const colors = [color, shade(color, -0.4)];
-    for (let i = 2, n = 0; i + 5 < w; i += 9, n++) {
-      const c = colors[n % 2];
-      px(ctx, x + i, y + 1, 5, 1, c);
-      px(ctx, x + i + 1, y + 2, 3, 1, c);
-      px(ctx, x + i + 2, y + 3, 1, 1, c);
-    }
+    const cx = x + 4.5, cy = y + 4.5;
+    ellipse(ctx, cx, cy, 5, 5, "#ffffff");
+    ctx.strokeStyle = "#dcdde3";
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4.6, 0, Math.PI * 2);
+    ctx.stroke();
+    const a = ((t / 1000) % 60) / 60 * Math.PI * 2 - Math.PI / 2;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 0.8;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy - 2.8);
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * 3.6, cy + Math.sin(a) * 3.6);
+    ctx.stroke();
   }
 
   // ---------- rooms and floors ----------
 
   function drawRoom(ctx, room, t, notes) {
     const { x, y, w, h } = room;
-    px(ctx, x - 1, y - 1, w + 2, h + 2, OUT);
-    // Wall with pennants, shelf, windows, whiteboard and clock.
-    px(ctx, x + 1, y + 1, w - 2, 35, room.wall);
-    px(ctx, x + 1, y + 34, w - 2, 2, room.trim);
-    px(ctx, x + 1, y + 36, w - 2, 1, OUT);
-    drawBunting(ctx, x + 4, y + 3, w - 8, room.trim);
-    drawShelf(ctx, x + 6, y + 11);
-    const panes = w >= 200 ? 3 : 2;
-    drawWindows(ctx, Math.round(x + w / 2 - (panes * 16 - 1) / 2) - (w >= 200 ? 0 : 6), y + 13, panes, t);
-    drawBoard(ctx, x + w - (w >= 200 ? 52 : 38), y + 12, notes);
-    if (w >= 200) drawClock(ctx, x + w - 16, y + 16, t);
-    // Floor with an inset carpet.
-    px(ctx, x + 1, y + 37, w - 2, h - 38, room.floor[0]);
-    const cw = w - 14, ch = h - 52;
-    rr(ctx, x + 7, y + 42, cw, ch, shade(room.floor[1], 0.18));
-    checker(ctx, x + 8, y + 43, cw - 2, ch - 2, [room.floor[1], shade(room.floor[1], -0.08)], 6);
-    drawPlant(ctx, x + 4, y + h - 17);
-    drawPlant(ctx, x + w - 14, y + h - 17);
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 6);
+    ctx.clip();
+    // Wall: tint, accent stripe under the ceiling, baseboard.
+    ctx.fillStyle = room.wall;
+    ctx.fillRect(x, y, w, 36);
+    ctx.fillStyle = room.trim;
+    ctx.fillRect(x, y, w, 2.5);
+    drawShelf(ctx, x + 7, y + 10);
+    const wide = w >= 200;
+    const winW = wide ? 46 : 30;
+    drawWindow(ctx, Math.round(x + w / 2 - winW / 2) - (wide ? 0 : 6), y + 9, winW, 18, t);
+    drawBoard(ctx, x + w - (wide ? 56 : 40), y + 10, notes);
+    if (wide) drawClock(ctx, x + w - 17, y + 13, t);
+    // Floor, a rug, and the line where wall meets floor.
+    vertical(ctx, x, y + 36, w, h - 36, room.floor[0], room.floor[1]);
+    ctx.fillStyle = "rgba(0,0,0,0.07)";
+    ctx.fillRect(x, y + 36, w, 1.5);
+    rect(ctx, x + 10, y + 46, w - 20, h - 58, 8, mix(room.trim, room.floor[1], 0.84));
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.roundRect(x + 13, y + 49, w - 26, h - 64, 6);
+    ctx.stroke();
+    drawPlant(ctx, x + 4, y + h - 18);
+    drawPlant(ctx, x + w - 14, y + h - 18);
+    ctx.restore();
   }
 
   function drawEmptyRoom(ctx, room, t) {
     const { x, y, w, h } = room;
-    px(ctx, x, y, w, h, "#1f1c29");
-    const dash = Math.floor(t / 200) % 2;
-    for (let i = dash; i < w; i += 4) {
-      px(ctx, x + i, y, 2, 1, "#6b6582");
-      px(ctx, x + i, y + h - 1, 2, 1, "#6b6582");
-    }
-    for (let i = dash; i < h; i += 4) {
-      px(ctx, x, y + i, 1, 2, "#6b6582");
-      px(ctx, x + w - 1, y + i, 1, 2, "#6b6582");
-    }
-    const cx = x + w / 2, cy = y + h / 2;
-    rr(ctx, cx - 10, cy - 3, 20, 6, "#8a84a6");
-    rr(ctx, cx - 3, cy - 10, 6, 20, "#8a84a6");
+    rect(ctx, x, y, w, h, 6, "#17181e");
+    ctx.save();
+    ctx.strokeStyle = "#3a3d4a";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.lineDashOffset = -Math.floor(t / 120) % 7;
+    ctx.beginPath();
+    ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, 6);
+    ctx.stroke();
+    ctx.restore(); // the "+ 팀원 추가" label sits in the middle (office.js overlay)
   }
 
   function drawLobby(ctx, W, t, kanban) {
-    checker(ctx, 0, 20, W, 60, ["#3d302a", "#44362f"]);
-    px(ctx, 0, 0, W, 18, "#2a2230");
-    px(ctx, 0, 18, W, 2, "#ffd36b");
-    drawBunting(ctx, 130, 3, W - 230, "#ffd36b");
+    // Wall and wood floor.
+    vertical(ctx, 0, 0, W, 20, "#f3eee7", "#ebe4da");
+    ctx.fillStyle = "#f5c443";
+    ctx.fillRect(0, 0, W, 2.5);
+    vertical(ctx, 0, 20, W, 60, "#e3cfb3", "#d7bf9f");
+    ctx.fillStyle = "rgba(120,90,60,0.08)";
+    for (let yy = 26; yy < 80; yy += 9) ctx.fillRect(0, yy, W, 0.8);
+    ctx.fillStyle = "rgba(0,0,0,0.08)";
+    ctx.fillRect(0, 20, W, 1.5);
+
+    // Windows between the manager's desk and the board.
+    const wx = Math.round(W / 2 - 40);
+    drawWindow(ctx, wx, 4, 34, 12, t);
+    drawWindow(ctx, wx + 46, 4, 34, 12, t);
 
     // Collaboration table with six chairs, centered.
     const tx = Math.round((W - 88) / 2) + 4;
-    for (let i = 0; i < 3; i++) {
-      box(ctx, tx + 10 + i * 26, 31, 14, 8, "#7a5a42");
-      box(ctx, tx + 10 + i * 26, 57, 14, 8, "#7a5a42");
-    }
-    px(ctx, tx + 2, 60, 86, 2, "rgba(0,0,0,0.25)");
-    box(ctx, tx, 37, 90, 22, "#d8a46a");
-    px(ctx, tx + 2, 39, 86, 2, "#ecc088");
-    px(ctx, tx + 2, 55, 86, 2, "#b8844e");
+    floorShadow(ctx, tx + 45, 63, 50, 4);
+    for (let i = 0; i < 3; i++) rect(ctx, tx + 10 + i * 26, 30, 15, 10, 4, "#3a3e4b");
+    rect(ctx, tx, 37, 90, 22, 6, "#c99a6a");
+    rect(ctx, tx, 37, 90, 19, 6, "#e3bf92");
+    rect(ctx, tx + 4, 39, 82, 1.5, 0.75, "rgba(255,255,255,0.35)");
+    for (let i = 0; i < 3; i++) rect(ctx, tx + 10 + i * 26, 57, 15, 9, 4, "#454a58");
 
     // Kanban board on the wall: todo / doing / done.
     const kx = W - 90;
-    box(ctx, kx, 1, 82, 16, "#f6f3ea");
+    rect(ctx, kx, 2, 82, 16, 2, "#ffffff");
     ["todo", "doing", "done"].forEach((col, ci) => {
-      if (ci) px(ctx, kx + ci * 27, 2, 1, 14, "#d9d4c7");
-      (kanban[col] || []).forEach((color, i) => px(ctx, kx + 3 + ci * 27 + (i % 3) * 8, 4 + Math.floor(i / 3) * 5, 6, 4, color));
+      if (ci) rect(ctx, kx + ci * 27, 4, 0.8, 12, 0, "#e3e4ea");
+      (kanban[col] || []).forEach((color, i) => rect(ctx, kx + 3 + ci * 27 + (i % 3) * 8, 4.5 + Math.floor(i / 3) * 4.6, 6, 3.6, 0.6, color));
     });
     drawPlant(ctx, W - 112, 62);
     drawPlant(ctx, W - 16, 62);
@@ -333,14 +437,16 @@
   }
 
   function drawCorridor(ctx, W, H) {
-    px(ctx, 0, 80, W, 8, "#3a3242");
-    for (let x = 4; x < W; x += 16) px(ctx, x, 83, 8, 2, "#4a4154");
-    px(ctx, 0, ROOM_Y, W, H - ROOM_Y, "#0c0b11"); // gaps between rows of rooms
+    ctx.fillStyle = "#1c1d24";
+    ctx.fillRect(0, 80, W, 8);
+    ctx.fillStyle = "#0b0b0f";
+    ctx.fillRect(0, ROOM_Y, W, H - ROOM_Y); // gaps between rows of rooms
   }
 
   function drawPaper(ctx, x, y) {
-    box(ctx, x - 1, y - 1, 9, 11, "#fffdf5");
-    for (let i = 0; i < 3; i++) px(ctx, x + 1, y + 2 + i * 2, 5, 1, "#9a93b3");
+    rect(ctx, x - 0.5, y + 0.5, 9, 11, 1.2, "rgba(0,0,0,0.18)");
+    rect(ctx, x - 1, y - 1, 9, 11, 1.2, "#ffffff");
+    for (let i = 0; i < 3; i++) rect(ctx, x + 0.8, y + 1.8 + i * 2.2, 5.4 - (i === 2 ? 2 : 0), 0.8, 0.4, "#a9acb8");
   }
 
   // ---------- workstations ----------
@@ -365,23 +471,31 @@
     drawChair(ctx, anchor.cx, anchor.deskY);
     if (look) drawCharacter(ctx, anchor.cx - 11, anchor.deskY - 26, look, pose); // null: seat empty while dragging
     drawDesk(ctx, anchor.cx, anchor.deskY, screen, t);
+    if (look) {
+      // Hands rest on the desk top, in front of it; they tap while typing.
+      const lift = (side) => (pose.typing && pose.frame % 2 === side ? 1.2 : 0);
+      ellipse(ctx, anchor.cx - 8, anchor.deskY - 0.2 - lift(0), 2.2, 1.6, look.skin);
+      ellipse(ctx, anchor.cx + 5, anchor.deskY - 0.2 - lift(1), 2.2, 1.6, look.skin);
+    }
   }
 
   function drawGhost(ctx, x, y, look) {
     ctx.save();
     ctx.globalAlpha = 0.85;
-    drawCharacter(ctx, Math.round(x) - 11, Math.round(y) - 15, look);
+    drawCharacter(ctx, x - 11, y - 15, look);
     ctx.restore();
   }
 
-  function highlight(ctx, rect, color) {
+  function highlight(ctx, rect_, color) {
     ctx.save();
-    ctx.globalAlpha = 0.22;
-    px(ctx, rect.x, rect.y, rect.w, rect.h, color);
+    ctx.globalAlpha = 0.18;
+    rect(ctx, rect_.x, rect_.y, rect_.w, rect_.h, 5, color);
     ctx.globalAlpha = 1;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(rect_.x + 0.6, rect_.y + 0.6, rect_.w - 1.2, rect_.h - 1.2, 5);
+    ctx.stroke();
     ctx.restore();
   }
 
