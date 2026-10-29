@@ -408,7 +408,7 @@ class SaveFileInput(BaseModel):
 class SaveFileTool(BaseTool):
     name: str = "save_file"
     description: str = (
-        "결과물을 파일로 저장한다. 대표가 Report 화면에서 내려받을 수 있다. 표는 CSV(첫 줄 머리글), "
+        "결과물을 파일로 저장한다. 대표가 결과 화면에서 내려받을 수 있다. 표는 CSV(첫 줄 머리글), "
         "문서는 md로 저장한다. 같은 이름으로 다시 저장하면 덮어쓴다."
     )
     args_schema: type[BaseModel] = SaveFileInput
@@ -426,4 +426,4 @@ class SaveFileTool(BaseTool):
         (self.folder / filename).write_bytes(
             ("﻿".encode() if filename.endswith(".csv") else b"") + data
         )
-        return f"'{filename}' 저장 완료 ({len(data):,} bytes). 대표는 Report 화면에서 내려받을 수 있다."
+        return f"'{filename}' 저장 완료 ({len(data):,} bytes). 대표는 결과 화면에서 내려받을 수 있다."

@@ -337,7 +337,7 @@
         state.tokens = ev.total_tokens;
         state.endedAt = ev.t;
         mgr.status = "idle";
-        say(mgr, "🎉 완료! Report 탭에서 결과를 확인하세요", "done");
+        say(mgr, "🎉 완료! 결과 탭에서 확인하세요", "done");
         feed(ev, "manager", mgr.name, `🎉 전체 완료${ev.total_tokens ? ` — ${ev.total_tokens.toLocaleString()} 토큰` : ""}`);
         if (live) {
           reportView = null;
@@ -470,7 +470,7 @@
     $("#tasks-badge").classList.toggle("new", open > 0);
     list.innerHTML = "";
     if (!orders.length) {
-      list.innerHTML = `<p class="empty">아직 업무 지시가 없습니다. 위 입력칸에 지시를 쓰고 📨 지시를 누르세요. 여러 개를 넣으면 차례대로 처리합니다.</p>`;
+      list.innerHTML = `<p class="empty">아직 업무 지시가 없습니다. 위 입력칸에 지시를 쓰고 지시를 누르세요. 여러 개를 넣으면 차례대로 처리합니다.</p>`;
       return;
     }
     orders.forEach((order) => {
@@ -520,20 +520,20 @@
       };
       if (order.status === "queued") actions.append(button("취소", "대기열에서 뺍니다", () => api(`/api/orders/${order.id}`, "DELETE")));
       if (order.status === "running") {
-        actions.append(button("🏢 사무실에서 보기", "", () => showTab("office")));
+        actions.append(button("사무실에서 보기", "", () => showTab("office")));
       }
-      if (order.status === "done") actions.append(button("📄 결과 보기", "", () => openReport(order), { cls: "primary" }));
+      if (order.status === "done") actions.append(button("결과 보기", "", () => openReport(order), { cls: "soft" }));
       if (order.run && order.status !== "running") {
-        actions.append(button("⟲ 재생", "이 업무가 진행된 모습을 다시 봅니다 (비용 없음)", () => {
+        actions.append(button("재생", "이 업무가 진행된 모습을 다시 봅니다 (비용 없음)", () => {
           api(`/api/orders/${order.id}/replay`, "POST", { speed: Number($("#speed").value) }).then((ok) => ok && showTab("office"));
         }));
       }
       if (["failed", "stopped"].includes(order.status)) {
-        actions.append(button("▶ 이어서 실행", "팀원들이 이미 끝낸 일은 그대로 쓰고, 남은 일만 이어서 합니다", async () => {
+        actions.append(button("이어서 실행", "팀원들이 이미 끝낸 일은 그대로 쓰고, 남은 일만 이어서 합니다", async () => {
           if (await api(`/api/orders/${order.id}/resume`, "POST")) flash("▶ 이어서 실행을 대기열에 넣었습니다. 끝난 팀원 결과는 팀장에게 함께 전달됩니다.");
         }, { cls: "primary" }));
       }
-      if (["failed", "stopped", "cancelled", "done"].includes(order.status)) actions.append(button("↻ 다시 지시", "같은 내용을 입력칸에 넣습니다", again));
+      if (["failed", "stopped", "cancelled", "done"].includes(order.status)) actions.append(button("다시 지시", "같은 내용을 입력칸에 넣습니다", again));
       if (actions.children.length) card.append(actions);
       list.append(card);
     });
@@ -557,7 +557,7 @@
     const el = $("#report");
     const view = reportView || (state.report ? { title: state.topic, text: state.report, tokens: state.tokens } : null);
     if (!view) {
-      el.innerHTML = `<p class="empty">결과물이 완성되면 여기에 표시됩니다. 지난 결과는 📋 업무 탭의 📄 결과 보기로 엽니다.</p>`;
+      el.innerHTML = `<p class="empty">결과물이 완성되면 여기에 표시됩니다. 지난 결과는 업무 탭의 결과 보기로 엽니다.</p>`;
       $("#report-meta").textContent = "";
       $("#download-btn").disabled = true;
       return;
@@ -634,7 +634,7 @@
             if (ok) loadActions();
           };
           row.append(
-            button("✅ 승인하고 실행", "이 요청을 광고 플랫폼에 그대로 보냅니다", decide("approve", `${a.platform_label}에 이 변경을 반영할까요?\n\n${a.summary}`), { cls: "primary" }),
+            button("승인하고 실행", "이 요청을 광고 플랫폼에 그대로 보냅니다", decide("approve", `${a.platform_label}에 이 변경을 반영할까요?\n\n${a.summary}`), { cls: "primary" }),
             button("거절", "실행하지 않고 닫습니다", decide("reject", "이 요청을 거절할까요?")),
           );
         } else {
@@ -957,7 +957,7 @@
     if (!confirm(`${names} 팀원을 삭제할까요?`)) return;
     edit.draft.members = members().filter((m) => !keys.includes(m.key));
     changed("manager");
-    showMessage(`${doomed.length}명을 삭제했습니다. 💾 저장해야 반영됩니다.`, "ok");
+    showMessage(`${doomed.length}명을 삭제했습니다. 저장해야 반영됩니다.`, "ok");
   }
 
   function groupMembers(keys, rawName) {
@@ -1024,7 +1024,7 @@
     showTab("office");  // the editor lives in the Office panel
     $("#feed-box").hidden = true;
     $("#editor").hidden = false;
-    $("#edit-btn").textContent = "✕ 편집 닫기";
+    $("#edit-btn").textContent = "편집 닫기";
     canvas.classList.add("editing");
     showMessage("");
     draftChanged(true);
@@ -1039,7 +1039,7 @@
     edit = null;
     $("#feed-box").hidden = false;
     $("#editor").hidden = true;
-    $("#edit-btn").textContent = "🛠 팀 편집";
+    $("#edit-btn").textContent = "팀 편집";
     canvas.classList.remove("editing");
     canvas.style.cursor = "";
     buildOverlay(scene());
@@ -1129,7 +1129,7 @@
     const actions = document.createElement("div");
     actions.className = "group-actions";
     actions.append(
-      button("👥 그룹으로 묶기", "선택한 팀원을 한 방에 모읍니다", () => groupMembers(keys, name.value), { cls: "primary" }),
+      button("그룹으로 묶기", "선택한 팀원을 한 방에 모읍니다", () => groupMembers(keys, name.value), { cls: "primary" }),
       button("그룹 해제", "각자 자기 방으로 나눕니다", () => ungroupMembers(keys)),
     );
     if (wholeTeam) {
@@ -1154,14 +1154,14 @@
     const list = members();
     const idx = isManager ? -1 : indexOf(keys[0]);
     const person = isManager ? edit.draft.manager : list[idx];
-    if (isManager) box.append(editorHead("👑 팀장"));
+    if (isManager) box.append(editorHead("팀장"));
     else {
       const sameTeam = (j) => list[j] && list[j].team === person.team;
       const swap = (j) => { [list[idx], list[j]] = [list[j], list[idx]]; changed(); };
       box.append(editorHead(`${person.name} · ${teamLabel(person.team)}`,
         button("◀", "팀 안에서 앞 순서로", () => swap(idx - 1), { disabled: !sameTeam(idx - 1) }),
         button("▶", "팀 안에서 뒤 순서로", () => swap(idx + 1), { disabled: !sameTeam(idx + 1) }),
-        button("🗑 팀원 삭제", "이 팀원 삭제 (Delete 키)", () => removeMembers([person.key]), { disabled: list.length <= 1, cls: "danger-outline" })));
+        button("팀원 삭제", "이 팀원 삭제 (Delete 키)", () => removeMembers([person.key]), { disabled: list.length <= 1, cls: "danger-outline" })));
     }
 
     const grid = document.createElement("div");
@@ -1363,7 +1363,7 @@
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "biz-edit";
-        btn.textContent = "✎ 이름·목표";
+        btn.textContent = "편집";
         btn.addEventListener("click", (e) => { e.stopPropagation(); openBizDialog(p); });
         meta.append(btn);
       }
@@ -1410,7 +1410,7 @@
   async function showProjectState() {
     const p = projects.find((x) => x.id === selectedProject);
     if (!p) return;
-    $("#instruction").placeholder = `'${p.name}' 팀장에게 업무 지시 (Enter 보내기 · Shift+Enter 줄바꿈)`;
+    $("#instruction").placeholder = `'${p.name}' 팀장에게 업무 지시`;
     renderRecordings();
     reportView = null;
     const latest = orders.find((o) => o.status === "done"); // newest first
@@ -1476,7 +1476,7 @@
     input.value = "";
     autosize();
     const ahead = status.busy ? " 앞선 작업이 끝나면 시작합니다." : "";
-    flash(`📨 지시를 보냈습니다.${ahead} 📋 업무 탭에서 진행 상황을 볼 수 있습니다.`);
+    flash(`지시를 보냈습니다.${ahead} 업무 탭에서 진행 상황을 볼 수 있습니다.`);
     loadOrders();
   }
 

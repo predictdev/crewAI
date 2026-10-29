@@ -13,7 +13,7 @@
     <div class="brand"><span class="logo">AI OFFICE</span></div>
     <div class="conn" id="conn"><span class="dot"></span><span>연결 중</span></div>
     <div class="account">
-      <button type="button" id="members-btn" hidden>👥 회원 <span class="badge new" id="members-badge" hidden>0</span></button>
+      <button type="button" id="members-btn" hidden>회원 <span class="badge new" id="members-badge" hidden>0</span></button>
       <span class="user-name" id="user-name"></span>
       <button type="button" id="logout-btn">로그아웃</button>
     </div>
@@ -21,7 +21,7 @@
 
   <dialog class="members" id="members">
     <div class="members-top">
-      <h2>MEMBERS</h2>
+      <h2>회원</h2>
       <button type="button" id="members-close" aria-label="닫기">✕</button>
     </div>
     <p class="editor-note">가입 신청을 승인하면 그 사람에게 문자로 알리고, 휴대폰 번호로 로그인할 수 있게 됩니다. 이용 중지하면 바로 로그아웃됩니다.</p>
@@ -32,40 +32,40 @@
   <div class="workspace">
   <aside class="biz" aria-label="사업 목록">
     <div class="biz-top">
-      <h2>BUSINESS</h2>
+      <h2>사업</h2>
       <button type="button" id="project-new" title="새 사업">＋ 새 사업</button>
     </div>
     <ul class="biz-list" id="biz-list"></ul>
   </aside>
   <div class="workspace-main">
   <form class="run" id="order-form">
-    <textarea id="instruction" rows="1" placeholder="팀장에게 업무 지시 (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
-    <button type="submit" id="order-btn" class="primary">📨 지시</button>
+    <textarea id="instruction" rows="1" placeholder="팀장에게 업무 지시" title="Enter 보내기 · Shift+Enter 줄바꿈"></textarea>
+    <button type="submit" id="order-btn" class="primary">지시</button>
   </form>
   <div class="now" id="now" hidden>
     <span class="mode" id="mode"></span>
     <span class="now-text" id="now-text"></span>
     <button type="button" id="now-go" hidden>보러 가기</button>
-    <button type="button" id="stop-btn" class="danger-outline">■ 중지</button>
+    <button type="button" id="stop-btn" class="danger-outline">중지</button>
   </div>
   <p class="hint" id="hint" hidden></p>
   <p class="hint info" id="flash" hidden></p>
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="office" class="active">🏢 Office</button>
-    <button role="tab" data-tab="tasks">📋 업무 <span class="badge" id="tasks-badge">0</span></button>
-    <button role="tab" data-tab="report">📄 Report <span class="badge new" id="report-badge" hidden>NEW</span></button>
-    <button role="tab" data-tab="approvals">✅ 승인 <span class="badge new" id="approvals-badge" hidden>0</span></button>
-    <button type="button" id="edit-btn" class="edit-btn">🛠 팀 편집</button>
+    <button role="tab" data-tab="office" class="active">사무실</button>
+    <button role="tab" data-tab="tasks">업무 <span class="badge" id="tasks-badge">0</span></button>
+    <button role="tab" data-tab="report">결과 <span class="badge new" id="report-badge" hidden>NEW</span></button>
+    <button role="tab" data-tab="approvals">승인 <span class="badge new" id="approvals-badge" hidden>0</span></button>
+    <button type="button" id="edit-btn" class="edit-btn">팀 편집</button>
   </nav>
 
   <main>
     <section class="panel active" data-panel="office">
       <div class="stats">
-        <div class="stat"><span>STAFF</span><b id="stat-staff">0</b></div>
-        <div class="stat"><span>WORKING</span><b id="stat-working">0</b></div>
-        <div class="stat"><span>IN PROGRESS</span><b id="stat-progress">0</b></div>
-        <div class="stat"><span>DONE</span><b id="stat-done">0/0</b></div>
-        <div class="stat"><span>TIME</span><b id="stat-time">00:00</b></div>
+        <div class="stat"><span>인원</span><b id="stat-staff">0</b></div>
+        <div class="stat"><span>작업 중</span><b id="stat-working">0</b></div>
+        <div class="stat"><span>진행</span><b id="stat-progress">0</b></div>
+        <div class="stat"><span>완료</span><b id="stat-done">0/0</b></div>
+        <div class="stat"><span>경과</span><b id="stat-time">00:00</b></div>
       </div>
       <div class="office-layout">
         <div class="stage" id="stage">
@@ -74,20 +74,20 @@
         </div>
         <aside class="side">
           <div class="feed" id="feed-box">
-            <h2>ACTIVITY</h2>
+            <h2>활동</h2>
             <ol id="feed"></ol>
           </div>
           <div class="editor" id="editor" hidden>
             <div class="editor-top">
-              <h2>TEAM</h2>
+              <h2>팀 편집</h2>
               <span class="editor-state" id="editor-state">저장됨</span>
             </div>
             <p class="editor-note">캐릭터를 끌어 자리를 바꾸고, 클릭해서 설정을 고칩니다. 팀원을 다른 방으로 끌면 그 팀으로 옮겨 가고, 팀장석으로 끌면 그 사람이 팀장이 됩니다(역할 설정은 자리에 남음). 글에 <code>{topic}</code>(업무 지시 내용), <code>{current_year}</code>를 쓸 수 있습니다.</p>
             <div id="editor-fields"></div>
             <p class="editor-msg" id="editor-msg"></p>
             <div class="editor-actions">
-              <button type="button" id="editor-save" class="primary" disabled>💾 저장</button>
-              <button type="button" id="editor-revert" disabled>↺ 되돌리기</button>
+              <button type="button" id="editor-save" class="primary" disabled>저장</button>
+              <button type="button" id="editor-revert" disabled>되돌리기</button>
               <button type="button" id="editor-default">기본 구성</button>
             </div>
           </div>
@@ -108,7 +108,7 @@
         <summary>샘플·이전 기록 재생</summary>
         <div class="replay">
           <select id="recording" aria-label="녹화 선택"></select>
-          <button type="button" id="replay-btn">⟲ 재생</button>
+          <button type="button" id="replay-btn">재생</button>
         </div>
       </details>
     </section>
@@ -116,7 +116,7 @@
     <section class="panel" data-panel="report">
       <div class="report-bar">
         <span id="report-meta"></span>
-        <button type="button" id="download-btn" disabled>⬇ .md 저장</button>
+        <button type="button" id="download-btn" disabled>.md 저장</button>
       </div>
       <div class="report-files" id="report-files" hidden></div>
       <article id="report" class="report"><p class="empty">리포트가 완성되면 여기에 표시됩니다.</p></article>
