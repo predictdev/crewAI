@@ -53,6 +53,15 @@
     return { W, H: H + (Math.max(rows.length, 1) - 1) * (ROOM_H + ROOM_GAP), rooms };
   }
 
+  // ---------- places people walk between ----------
+
+  const CORRIDOR_Y = 84;
+  const doorOf = (room) => ({ x: room.x + 36.5, y: room.y + 36 });
+  const tableX = (W) => Math.round((W - 88) / 2) + 4;
+  // Standing spots in front of the lobby table (lead, member) and beside the lead's desk.
+  const meetingSpots = (W) => [{ x: tableX(W) + 20, y: 77 }, { x: tableX(W) + 70, y: 77 }];
+  const REPORT_SPOT = { x: 102, y: 76 };
+
   // ---------- primitives ----------
 
   function rgb(hex) {
@@ -95,50 +104,23 @@
     ctx.fillRect(x, y, w, h);
   }
 
+  // A limb hanging from (x, y), swung by `angle` radians (0 = straight down).
+  function limb(ctx, x, y, w, len, angle, fill) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    rect(ctx, -w / 2, 0, w, len, w / 2, fill);
+    ctx.restore();
+  }
+  // Where the end of that limb is.
+  const limbEnd = (x, y, len, angle) => [x - Math.sin(angle) * len, y + Math.cos(angle) * len];
+
   // ---------- characters ----------
 
-  // Seated figure seen from the front in a 22x30 box; the desk covers the lower body.
-  function drawCharacter(ctx, x, y, look, pose = {}) {
-    y += pose.bob || 0;
-    const cx = x + 11, cy = y + 9.5; // head center
-    const hair = look.hair, skin = look.skin, shirt = look.shirt;
-    const skinLo = shade(skin, -0.12);
-
-    if (look.longHair) rect(ctx, x + 1.5, y + 3, 19, 21, 8, shade(hair, -0.18));
-
-    // Torso with a soft side shade, collar and optional tie.
-    rect(ctx, x + 3, y + 17.5, 16, 14, [7, 7, 3, 3], shirt);
-    rect(ctx, x + 13.5, y + 19, 5.5, 12, [0, 6, 3, 0], shade(shirt, -0.12));
-    ctx.fillStyle = "#f7f5f0";
-    ctx.beginPath();
-    ctx.moveTo(cx - 4, y + 17.6);
-    ctx.lineTo(cx, y + 21.5);
-    ctx.lineTo(cx + 4, y + 17.6);
-    ctx.closePath();
-    ctx.fill();
-    if (look.tie) {
-      ctx.fillStyle = look.tie;
-      ctx.beginPath();
-      ctx.moveTo(cx - 1.2, y + 20);
-      ctx.lineTo(cx + 1.2, y + 20);
-      ctx.lineTo(cx + 1.8, y + 26);
-      ctx.lineTo(cx, y + 27.5);
-      ctx.lineTo(cx - 1.8, y + 26);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Arms down the sides; hands alternate on the keyboard while typing.
-    const sleeve = shade(shirt, -0.08);
-    rect(ctx, x + 0.5, y + 19.5, 5, 9.5, 2.5, sleeve);
-    rect(ctx, x + 16.5, y + 19.5, 5, 9.5, 2.5, sleeve);
-    const left = pose.typing && pose.frame % 2 === 0 ? 26 : 27.5;
-    const right = pose.typing && pose.frame % 2 === 1 ? 26 : 27.5;
-    ellipse(ctx, x + 3, y + left, 2.3, 2.1, skin);
-    ellipse(ctx, x + 19, y + right, 2.3, 2.1, skin);
-
-    // Neck, ears and head.
-    rect(ctx, cx - 2, y + 15, 4, 3.5, 1, skinLo);
+  // Head centered on (cx, cy): ears, face, hair, optional crown.
+  // pose.look shifts the eyes (-1 left, 1 right); pose.talk (0..1) opens the mouth.
+  function drawHead(ctx, cx, cy, look, pose = {}) {
+    const hair = look.hair, skin = look.skin, skinLo = shade(skin, -0.12);
     ellipse(ctx, cx - 8.4, cy + 1.5, 1.6, 2.1, skinLo);
     ellipse(ctx, cx + 8.4, cy + 1.5, 1.6, 2.1, skinLo);
     ellipse(ctx, cx, cy, 8.3, 8.6, skin);
@@ -165,43 +147,207 @@
     ctx.stroke();
 
     // Face.
+    const ex = (pose.look || 0) * 1.1;
     if (pose.blink) {
       ctx.strokeStyle = INK;
       ctx.lineWidth = 0.8;
       ctx.beginPath();
-      ctx.moveTo(cx - 4.3, cy + 2.6);
-      ctx.lineTo(cx - 2.1, cy + 2.6);
-      ctx.moveTo(cx + 2.1, cy + 2.6);
-      ctx.lineTo(cx + 4.3, cy + 2.6);
+      ctx.moveTo(cx - 4.3 + ex, cy + 2.6);
+      ctx.lineTo(cx - 2.1 + ex, cy + 2.6);
+      ctx.moveTo(cx + 2.1 + ex, cy + 2.6);
+      ctx.lineTo(cx + 4.3 + ex, cy + 2.6);
       ctx.stroke();
     } else {
-      ellipse(ctx, cx - 3.2, cy + 2.4, 1, 1.3, INK);
-      ellipse(ctx, cx + 3.2, cy + 2.4, 1, 1.3, INK);
-      ellipse(ctx, cx - 2.9, cy + 1.9, 0.35, 0.35, "#ffffff");
-      ellipse(ctx, cx + 3.5, cy + 1.9, 0.35, 0.35, "#ffffff");
+      ellipse(ctx, cx - 3.2 + ex, cy + 2.4, 1, 1.3, INK);
+      ellipse(ctx, cx + 3.2 + ex, cy + 2.4, 1, 1.3, INK);
+      ellipse(ctx, cx - 2.9 + ex, cy + 1.9, 0.35, 0.35, "#ffffff");
+      ellipse(ctx, cx + 3.5 + ex, cy + 1.9, 0.35, 0.35, "#ffffff");
     }
     ellipse(ctx, cx - 5.4, cy + 4.6, 1.5, 0.9, "rgba(240,120,120,0.28)");
     ellipse(ctx, cx + 5.4, cy + 4.6, 1.5, 0.9, "rgba(240,120,120,0.28)");
-    ctx.strokeStyle = shade(skin, -0.45);
-    ctx.lineWidth = 0.7;
-    ctx.beginPath();
-    ctx.arc(cx, cy + 4.6, 1.3, Math.PI * 0.2, Math.PI * 0.8);
-    ctx.stroke();
+    if (pose.talk) {
+      ellipse(ctx, cx + ex * 0.5, cy + 5, 1.3, 0.5 + pose.talk * 0.9, shade(skin, -0.5));
+    } else {
+      ctx.strokeStyle = shade(skin, -0.45);
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.arc(cx + ex * 0.5, cy + 4.6, 1.3, Math.PI * 0.2, Math.PI * 0.8);
+      ctx.stroke();
+    }
 
     if (look.crown) {
+      const top = cy - 9.5;
       ctx.fillStyle = "#f5c443";
       ctx.beginPath();
-      ctx.moveTo(cx - 5, y - 1.5);
-      ctx.lineTo(cx - 5.5, y - 6.5);
-      ctx.lineTo(cx - 2.6, y - 4);
-      ctx.lineTo(cx, y - 7.5);
-      ctx.lineTo(cx + 2.6, y - 4);
-      ctx.lineTo(cx + 5.5, y - 6.5);
-      ctx.lineTo(cx + 5, y - 1.5);
+      ctx.moveTo(cx - 5, top - 1.5);
+      ctx.lineTo(cx - 5.5, top - 6.5);
+      ctx.lineTo(cx - 2.6, top - 4);
+      ctx.lineTo(cx, top - 7.5);
+      ctx.lineTo(cx + 2.6, top - 4);
+      ctx.lineTo(cx + 5.5, top - 6.5);
+      ctx.lineTo(cx + 5, top - 1.5);
       ctx.closePath();
       ctx.fill();
-      ellipse(ctx, cx, y - 3.2, 0.9, 0.9, "#e0574f");
+      ellipse(ctx, cx, top - 3.2, 0.9, 0.9, "#e0574f");
     }
+  }
+
+  function drawCollar(ctx, cx, top, look) {
+    ctx.fillStyle = "#f7f5f0";
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, top);
+    ctx.lineTo(cx, top + 3.9);
+    ctx.lineTo(cx + 4, top);
+    ctx.closePath();
+    ctx.fill();
+    if (look.tie) {
+      ctx.fillStyle = look.tie;
+      ctx.beginPath();
+      ctx.moveTo(cx - 1.2, top + 2.4);
+      ctx.lineTo(cx + 1.2, top + 2.4);
+      ctx.lineTo(cx + 1.8, top + 8.4);
+      ctx.lineTo(cx, top + 9.9);
+      ctx.lineTo(cx - 1.8, top + 8.4);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // Seated figure seen from the front in a 22x30 box; the desk covers the lower body.
+  // pose: bob, dx (shake), typing/frame, blink, look, talk, stretch (0..1 arms up).
+  function drawCharacter(ctx, x, y, look, pose = {}) {
+    y += pose.bob || 0;
+    x += pose.dx || 0;
+    const cx = x + 11, cy = y + 9.5; // head center
+    const shirt = look.shirt, sleeve = shade(shirt, -0.08);
+
+    if (look.longHair) rect(ctx, x + 1.5, y + 3, 19, 21, 8, shade(look.hair, -0.18));
+
+    // Raised arms go behind the head.
+    if (pose.stretch) {
+      const a = Math.PI * (1 - 0.2 * pose.stretch);
+      for (const [sx, dir] of [[x + 4.5, 1], [x + 17.5, -1]]) {
+        limb(ctx, sx, y + 20, 4.6, 13, a * dir, sleeve);
+        const [hx, hy] = limbEnd(sx, y + 20, 13, a * dir);
+        ellipse(ctx, hx, hy, 2.3, 2.3, look.skin);
+      }
+    }
+
+    // Torso with a soft side shade, collar and optional tie.
+    rect(ctx, x + 3, y + 17.5, 16, 14, [7, 7, 3, 3], shirt);
+    rect(ctx, x + 13.5, y + 19, 5.5, 12, [0, 6, 3, 0], shade(shirt, -0.12));
+    drawCollar(ctx, cx, y + 17.6, look);
+    if (!pose.stretch) {
+      rect(ctx, x + 0.5, y + 19.5, 5, 9.5, 2.5, sleeve);
+      rect(ctx, x + 16.5, y + 19.5, 5, 9.5, 2.5, sleeve);
+    }
+
+    rect(ctx, cx - 2, y + 15, 4, 3.5, 1, shade(look.skin, -0.12));
+    drawHead(ctx, cx, cy, look, pose);
+  }
+
+  // Standing or walking figure with its feet at (x, y).
+  // pose: phase (walk cycle, radians), moving, carry (holding a paper), talk (0..1),
+  // gesture (radians, an arm waving while talking), jump (units off the floor), look.
+  function drawStanding(ctx, x, y, look, pose = {}) {
+    const swing = pose.moving ? Math.sin(pose.phase || 0) : 0;
+    const lift = pose.moving ? Math.abs(Math.sin(pose.phase || 0)) * 0.9 : 0;
+    floorShadow(ctx, x, y + 0.5, Math.max(4, 7 - (pose.jump || 0) * 0.3), 1.8, 0.18);
+    y -= lift + (pose.jump || 0);
+    const shirt = look.shirt, sleeve = shade(shirt, -0.08), pants = look.pants || "#2a2a3a";
+
+    // Legs and shoes.
+    for (const [lx, a] of [[x - 2.2, swing * 0.45], [x + 2.2, -swing * 0.45]]) {
+      limb(ctx, lx, y - 10, 3.6, 9, a, pants);
+      const [fx, fy] = limbEnd(lx, y - 10, 9, a);
+      ellipse(ctx, fx, fy, 2.4, 1.3, "#2b2d35");
+    }
+
+    if (look.longHair) rect(ctx, x - 9.5, y - 37, 19, 18, 8, shade(look.hair, -0.18));
+
+    // Arms swing opposite the legs; the right one reaches forward to carry, waves to talk.
+    const left = -swing * 0.5;
+    const right = pose.carry ? 0.95 : pose.gesture !== undefined ? -1.5 - Math.sin(pose.gesture) * 0.45 : swing * 0.5;
+    limb(ctx, x - 7.2, y - 20, 3.8, 10, -left, sleeve);
+    rect(ctx, x - 7, y - 22, 14, 13, [6, 6, 3, 3], shirt);
+    rect(ctx, x + 1.5, y - 20.5, 5.5, 11, [0, 5, 3, 0], shade(shirt, -0.12));
+    drawCollar(ctx, x, y - 21.9, look);
+    limb(ctx, x + 7.2, y - 20, 3.8, 10, right, sleeve);
+    const [lhx, lhy] = limbEnd(x - 7.2, y - 20, 10, -left);
+    ellipse(ctx, lhx, lhy, 2, 2, look.skin);
+    const [rhx, rhy] = limbEnd(x + 7.2, y - 20, 10, right);
+    if (pose.carry) {
+      rect(ctx, rhx - 3.5, rhy - 7, 7, 9, 1, "#ffffff");
+      for (let i = 0; i < 3; i++) rect(ctx, rhx - 2.3, rhy - 5.4 + i * 2, 4.6 - (i === 2 ? 1.6 : 0), 0.7, 0.35, "#a9acb8");
+    }
+    ellipse(ctx, rhx, rhy, 2, 2, look.skin);
+
+    rect(ctx, x - 2, y - 25, 4, 3.5, 1, shade(look.skin, -0.12));
+    drawHead(ctx, x, y - 32, look, pose);
+  }
+
+  // ---------- effects ----------
+
+  // Thought cloud to the upper right of a head at (hx, hy), with dots that tick.
+  function drawThought(ctx, hx, hy, t) {
+    const x = hx + 13, y = hy - 13;
+    ellipse(ctx, hx + 7, hy - 4, 1.1, 1.1, "#ffffff");
+    ellipse(ctx, hx + 9.5, hy - 7.5, 1.7, 1.7, "#ffffff");
+    [[0, 0, 6, 4.2], [-4, 1, 3.6, 3.2], [4.5, 1, 3.8, 3.2], [1, -2.5, 4, 3.2]].forEach(([dx, dy, rx, ry]) => ellipse(ctx, x + dx, y + dy, rx, ry, "#ffffff"));
+    const lit = Math.floor(t / 320) % 4;
+    for (let i = 0; i < 3; i++) ellipse(ctx, x - 3 + i * 3, y + 0.5, 0.85, 0.85, i < lit ? "#8b7cf6" : "#d7d9e2");
+  }
+
+  // Bits of work floating up off a monitor; a magnifier sweeps while searching.
+  function drawWorkFx(ctx, cx, deskY, kind, t) {
+    const color = kind === "search" ? "#5b7cfa" : "#2fae76";
+    for (let i = 0; i < 3; i++) {
+      const p = (t / 1500 + i / 3) % 1;
+      ctx.save();
+      ctx.globalAlpha = (1 - p) * 0.9;
+      rect(ctx, cx + 13 + Math.sin(i * 2.1 + p * 5) * 4, deskY - 20 - p * 16, 4 - p * 1.5, 1.6, 0.8, color);
+      ctx.restore();
+    }
+    if (kind === "search") {
+      const mx = cx + 29 + Math.sin(t / 260) * 2.5, my = deskY - 21 + Math.cos(t / 260) * 1.5;
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 1.4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(mx + 2.2, my + 2.2);
+      ctx.lineTo(mx + 5, my + 5);
+      ctx.stroke();
+      ellipse(ctx, mx, my, 3.4, 3.4, "rgba(255,255,255,0.9)");
+      ctx.strokeStyle = "#5b7cfa";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(mx, my, 3.3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // Red "!" badge over a head at (hx, hy).
+  function drawAlert(ctx, hx, hy, t) {
+    const y = hy - 15 - Math.abs(Math.sin(t / 180)) * 1.5;
+    ellipse(ctx, hx, y, 4, 4, "#f0696c");
+    rect(ctx, hx - 0.7, y - 2.5, 1.4, 3.2, 0.7, "#ffffff");
+    ellipse(ctx, hx, y + 2, 0.75, 0.75, "#ffffff");
+  }
+
+  // Confetti pieces: { x, y, vx, vy, color, spin, born, life } (ms).
+  function drawConfetti(ctx, bits, now) {
+    bits.forEach((b) => {
+      const age = (now - b.born) / 1000;
+      const k = age / (b.life / 1000);
+      if (k < 0 || k >= 1) return;
+      ctx.save();
+      ctx.globalAlpha = 1 - k * k;
+      ctx.translate(b.x + b.vx * age, b.y + b.vy * age + 70 * age * age);
+      ctx.rotate(b.spin * age);
+      ctx.fillStyle = b.color;
+      ctx.fillRect(-1.3, -0.75, 2.6, 1.5);
+      ctx.restore();
+    });
   }
 
   // ---------- furniture ----------
@@ -241,6 +387,16 @@
         ctx.roundRect(cx + 10, deskY - 13.6 + i * 2.6, len, 1.1, 0.5);
         ctx.fill();
       }
+    } else if (screen === "done") {
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.4;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(cx + 14.5, deskY - 9.5);
+      ctx.lineTo(cx + 17, deskY - 7);
+      ctx.lineTo(cx + 21.5, deskY - 12);
+      ctx.stroke();
     } else if (screen !== "off") {
       rect(ctx, cx + 8.2, deskY - 15.8, 19.6, 4, [1.2, 1.2, 0, 0], "rgba(255,255,255,0.18)");
     }
@@ -308,12 +464,25 @@
     rect(ctx, x + w / 2 - 0.5, y, 1, h, 0, "#ffffff");
   }
 
+  // The room's door to the corridor; open while someone passes through.
+  function drawDoor(ctx, x, y, open) {
+    rect(ctx, x - 1, y - 1, 15, 25, [2, 2, 0, 0], "#ffffff");
+    if (open) {
+      rect(ctx, x, y, 13, 24, [1.5, 1.5, 0, 0], "#2b2d35");
+      rect(ctx, x, y, 3.5, 24, [1.5, 0, 0, 0], "#b98a5c");
+    } else {
+      rect(ctx, x, y, 13, 24, [1.5, 1.5, 0, 0], "#c99a6a");
+      rect(ctx, x + 2, y + 2.5, 9, 8, 1, "#d6aa7a");
+      rect(ctx, x + 2, y + 13, 9, 8.5, 1, "#d6aa7a");
+      ellipse(ctx, x + 10.5, y + 12.5, 0.9, 0.9, "#f5c443");
+    }
+  }
+
   function drawBoard(ctx, x, y, notes) {
     rect(ctx, x, y, 32, 18, 2, "#ffffff");
     rect(ctx, x, y + 16.5, 32, 1.5, [0, 0, 2, 2], "#dcdde3");
     (notes || []).forEach((color, i) => rect(ctx, x + 3 + (i % 4) * 7, y + 2.5 + Math.floor(i / 4) * 4.6, 5, 3.6, 0.6, color));
     if (!(notes || []).length) {
-      ctx.fillStyle = "#d2d4dc";
       [[4, 5, 18], [4, 8.5, 12], [4, 12, 15]].forEach(([dx, dy, len]) => rect(ctx, x + dx, y + dy, len, 1, 0.5, "#d2d4dc"));
     }
   }
@@ -353,21 +522,23 @@
 
   // ---------- rooms and floors ----------
 
+  // room.doorOpen: someone is passing through.
   function drawRoom(ctx, room, t, notes) {
     const { x, y, w, h } = room;
     ctx.save();
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, 6);
     ctx.clip();
-    // Wall: tint, accent stripe under the ceiling, baseboard.
+    // Wall: tint, accent stripe under the ceiling, shelf, door, window, board.
     ctx.fillStyle = room.wall;
     ctx.fillRect(x, y, w, 36);
     ctx.fillStyle = room.trim;
     ctx.fillRect(x, y, w, 2.5);
     drawShelf(ctx, x + 7, y + 10);
+    drawDoor(ctx, x + 30, y + 12, room.doorOpen);
     const wide = w >= 200;
     const winW = wide ? 46 : 30;
-    drawWindow(ctx, Math.round(x + w / 2 - winW / 2) - (wide ? 0 : 6), y + 9, winW, 18, t);
+    drawWindow(ctx, Math.round(x + w / 2 - winW / 2) + (wide ? 0 : 1), y + 9, winW, 18, t);
     drawBoard(ctx, x + w - (wide ? 56 : 40), y + 10, notes);
     if (wide) drawClock(ctx, x + w - 17, y + 13, t);
     // Floor, a rug, and the line where wall meets floor.
@@ -416,7 +587,7 @@
     drawWindow(ctx, wx + 46, 4, 34, 12, t);
 
     // Collaboration table with six chairs, centered.
-    const tx = Math.round((W - 88) / 2) + 4;
+    const tx = tableX(W);
     floorShadow(ctx, tx + 45, 63, 50, 4);
     for (let i = 0; i < 3; i++) rect(ctx, tx + 10 + i * 26, 30, 15, 10, 4, "#3a3e4b");
     rect(ctx, tx, 37, 90, 22, 6, "#c99a6a");
@@ -467,16 +638,24 @@
   const MANAGER = workstation(56, 50);
 
   // Chair, seated character and desk, anchored on the desk's top-center.
+  // look null: the seat is empty (dragged away, or out walking).
+  // pose.fx: "think" | "work" | "search" | "error" adds the matching effect.
   function drawWorkstation(ctx, anchor, look, pose, screen, t) {
     drawChair(ctx, anchor.cx, anchor.deskY);
-    if (look) drawCharacter(ctx, anchor.cx - 11, anchor.deskY - 26, look, pose); // null: seat empty while dragging
+    if (look) drawCharacter(ctx, anchor.cx - 11, anchor.deskY - 26, look, pose);
     drawDesk(ctx, anchor.cx, anchor.deskY, screen, t);
-    if (look) {
+    if (!look) return;
+    if (!pose.stretch) {
       // Hands rest on the desk top, in front of it; they tap while typing.
       const lift = (side) => (pose.typing && pose.frame % 2 === side ? 1.2 : 0);
-      ellipse(ctx, anchor.cx - 8, anchor.deskY - 0.2 - lift(0), 2.2, 1.6, look.skin);
-      ellipse(ctx, anchor.cx + 5, anchor.deskY - 0.2 - lift(1), 2.2, 1.6, look.skin);
+      const dx = pose.dx || 0;
+      ellipse(ctx, anchor.cx - 8 + dx, anchor.deskY - 0.2 - lift(0), 2.2, 1.6, look.skin);
+      ellipse(ctx, anchor.cx + 5 + dx, anchor.deskY - 0.2 - lift(1), 2.2, 1.6, look.skin);
     }
+    const hx = anchor.cx + (pose.dx || 0), hy = anchor.deskY - 16.5 + (pose.bob || 0);
+    if (pose.fx === "think") drawThought(ctx, hx, hy, t);
+    else if (pose.fx === "work" || pose.fx === "search") drawWorkFx(ctx, anchor.cx, anchor.deskY, pose.fx, t);
+    else if (pose.fx === "error") drawAlert(ctx, hx, hy, t);
   }
 
   function drawGhost(ctx, x, y, look) {
@@ -500,8 +679,9 @@
   }
 
   window.Pixel = {
-    LOOKS, MANAGER_LOOK, MANAGER, MANAGER_ZONE,
-    layout, deskAnchor, workstationBounds,
-    drawWorkstation, drawRoom, drawEmptyRoom, drawLobby, drawCorridor, drawPaper, drawGhost, highlight,
+    LOOKS, MANAGER_LOOK, MANAGER, MANAGER_ZONE, CORRIDOR_Y, REPORT_SPOT,
+    layout, deskAnchor, workstationBounds, doorOf, meetingSpots,
+    drawWorkstation, drawStanding, drawConfetti,
+    drawRoom, drawEmptyRoom, drawLobby, drawCorridor, drawPaper, drawGhost, highlight,
   };
 })();

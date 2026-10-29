@@ -174,7 +174,8 @@
         if (target) {
           target.status = "assigned";
           say(target, ask ? "❓ 팀장 질문 받음" : "📥 팀장 지시 받음");
-          if (live) paper(MANAGER, anchorOf(state, target));
+          // They meet at the lobby table; the paper flies over if either is still out walking.
+          if (live && !Motion.meeting(state, mgr, target, seatOf(state), handOver)) paper(MANAGER, anchorOf(state, target));
         }
         break;
       }
@@ -189,10 +190,11 @@
         mgr.status = "thinking";
         say(mgr, `🧐 ${target?.name || "팀원"}의 보고 검토 중`);
         feed(ev, "manager", mgr.name, `📑 ${target?.name || "팀원"}의 보고 수신`, ev.output);
-        if (target && live) paper(anchorOf(state, target), MANAGER);
+        if (target && live && !Motion.report(state, target, mgr, seatOf(state), handIn)) paper(anchorOf(state, target), MANAGER);
         break;
       }
       case "tool_error":
+        if (live) mgr.shakeUntil = performance.now() + 700;
         mgr.pending = null;
         if (mgr.pendingItem) mgr.pendingItem.status = "failed";
         mgr.pendingItem = null;
@@ -285,6 +287,7 @@
         break;
       case "tool_error":
         if (agent) {
+          if (live) agent.shakeUntil = performance.now() + 700;
           say(agent, `⚠️ ${ev.tool} 오류`, "error");
           feed(ev, "error", agent.name, `⚠️ ${ev.tool} 오류`, ev.error);
         }
@@ -296,7 +299,11 @@
         }
         break;
       case "agent_error":
-        if (agent) { agent.status = "error"; say(agent, "⚠️ 오류 발생", "error"); }
+        if (agent) {
+          agent.status = "error";
+          say(agent, "⚠️ 오류 발생", "error");
+          if (live) agent.shakeUntil = performance.now() + 900;
+        }
         feed(ev, "error", agent?.name || "?", "⚠️ 에이전트 오류", ev.error);
         break;
       case "task_completed": {
@@ -342,6 +349,7 @@
         if (live) {
           reportView = null;
           $("#report-badge").hidden = false;
+          Motion.celebrate(state, performance.now());
         }
         renderReport();
         break;
@@ -422,10 +430,24 @@
   function addBubble(x, y, size, extra = "") {
     const el = document.createElement("div");
     el.dataset.extra = extra;
+    Object.assign(el.dataset, { hx: x, hy: y });
     el.className = `bubble ${extra} hidden`;
     place(el, x, y, size);
     overlay.append(el);
     return el;
+  }
+
+  // A speech bubble goes along with its person while they walk, then back to the seat.
+  function followWalkers(sc) {
+    if (overlayOf !== sc) return;
+    bubbles.forEach((el, who) => {
+      const w = who.walker;
+      const at = w ? `${Math.round(w.x * 2)},${Math.round(w.y * 2)}` : "seat";
+      if (el.dataset.at === at) return;
+      el.dataset.at = at;
+      if (w) place(el, w.x + (el.dataset.extra ? 2 : 0), w.y - 44, sc.layout);
+      else place(el, Number(el.dataset.hx), Number(el.dataset.hy), sc.layout);
+    });
   }
 
   function renderBubbles() {
@@ -707,7 +729,30 @@
   // ---------- canvas ----------
 
   function paper(a, b) {
-    state.papers.push({ x0: a.cx - 3, y0: a.deskY - 10, x1: b.cx - 3, y1: b.deskY - 10, start: performance.now(), dur: 1400 });
+    flyPaper(a.cx - 3, a.deskY - 10, b.cx - 3, b.deskY - 10, 1400);
+  }
+
+  function flyPaper(x0, y0, x1, y1, dur) {
+    state.papers.push({ x0, y0, x1, y1, start: performance.now(), dur });
+  }
+
+  // Where someone sits, for the scenes in motion.js.
+  const seatOf = (sc) => (who) =>
+    who === sc.manager ? { seat: MANAGER, room: null } : { seat: anchorOf(sc, who), room: { index: who.room, rect: sc.layout.rooms[who.room] } };
+  // The lead hands the assignment across the table; a member hands a report in at the lead's desk.
+  const handOver = (from, to) => flyPaper(from.x - 3, from.y - 26, to.x - 3, to.y - 26, 700);
+  function handIn(spot) {
+    flyPaper(spot.x - 6, spot.y - 26, MANAGER.cx + 10, MANAGER.deskY - 8, 600);
+    Motion.burst(state, spot.x, spot.y - 36, performance.now(), 14);
+  }
+
+  // What floats over someone at work.
+  function fxFor(who, lead) {
+    if (who.status === "thinking") return "think";
+    if (who.status === "error") return "error";
+    if (who.status === "tool") return lead ? "work" : "search";
+    if (who.status === "working") return "work";
+    return null;
   }
 
   function screenFor(status) {
@@ -746,26 +791,40 @@
     const frame = Math.floor(now / 140);
     const drag = edit?.drag?.moved ? edit.drag : null;
     const mgr = sc.manager;
+    if (!edit) Motion.update(sc, now);
+    const fidget = (i) => (edit ? null : i); // idle stretches and glances, not while editing
     const mgrScreen = mgr.status !== "idle" ? screenFor(mgr.status) : running ? "on" : "off";
-    Pixel.drawWorkstation(ctx, MANAGER, drag?.who === "manager" ? null : mgr.look, {
-      typing: mgr.status === "tool", frame,
-      bob: mgr.status === "thinking" ? Math.sin(now / 260) * 0.8 : running ? Math.sin(now / 500) * 0.6 : 0,
+    const mgrPose = Motion.seatedPose(mgr, now, fidget(7));
+    Pixel.drawWorkstation(ctx, MANAGER, drag?.who === "manager" || mgr.walker ? null : mgr.look, {
+      ...mgrPose, typing: mgr.status === "tool", frame, fx: fxFor(mgr, true),
+      bob: (mgr.status === "thinking" ? Math.sin(now / 260) * 0.8 : running ? Math.sin(now / 500) * 0.6 : 0) + (mgrPose.bob || 0),
       blink: now % 3700 < 130,
     }, mgrScreen, now);
 
     sc.layout.teams.forEach((_, g) => {
       const tools = sc.agents.filter((a) => a.room === g).reduce((n, a) => n + a.toolCount, 0);
+      rooms[g].doorOpen = (sc.doors?.[g] || 0) > now;
       Pixel.drawRoom(ctx, rooms[g], now, Array.from({ length: Math.min(tools, 12) }, () => "#ffd36b"));
     });
     sc.agents.forEach((agent) => {
       const typing = agent.status === "tool" || agent.status === "working" || agent.status === "assigned";
-      Pixel.drawWorkstation(ctx, anchorOf(sc, agent), drag && drag.who === agent.key ? null : agent.look, {
-        typing, frame,
-        bob: agent.status === "thinking" ? Math.sin(now / 260) * 0.8 : 0,
+      const pose = Motion.seatedPose(agent, now, fidget(agent.index));
+      Pixel.drawWorkstation(ctx, anchorOf(sc, agent), (drag && drag.who === agent.key) || agent.walker ? null : agent.look, {
+        ...pose, typing, frame, fx: fxFor(agent, false),
+        bob: (agent.status === "thinking" ? Math.sin(now / 260) * 0.8 : 0) + (pose.bob || 0),
         blink: (now + agent.index * 900) % 4100 < 130,
       }, screenFor(agent.status), now);
     });
     if (sc.layout.addSlot) Pixel.drawEmptyRoom(ctx, rooms[sc.layout.teams.length], now);
+
+    // People out of their seats, nearer ones in front.
+    [mgr, ...sc.agents].filter((who) => who.walker).sort((a, b) => a.walker.y - b.walker.y).forEach((who) => {
+      ctx.save();
+      ctx.globalAlpha = who.walker.alpha;
+      Pixel.drawStanding(ctx, who.walker.x, who.walker.y, who.look, Motion.standingPose(who, now));
+      ctx.restore();
+    });
+    followWalkers(sc);
 
     if (edit) {
       if (!drag) (edit.selected === "manager" ? ["manager"] : edit.selected).forEach((seat) => Pixel.highlight(ctx, seatBounds(seat), "#ffd36b"));
@@ -784,6 +843,7 @@
       Pixel.drawPaper(ctx, x, y);
       return true;
     });
+    if (sc.confetti?.length) Pixel.drawConfetti(ctx, sc.confetti, now);
     requestAnimationFrame(draw);
   }
 
