@@ -103,6 +103,23 @@ supabase functions deploy multiai-send-sms --project-ref woevgjaavqtecdhkxnhl --
 
 API 버전은 `META_API_VERSION`(기본 `v26.0`), `GOOGLE_ADS_API_VERSION`(기본 `v26`)으로 바꿀 수 있습니다.
 
+### 브라우저로 열기: Playwright 또는 Camofox
+
+자바스크립트로 그리는 페이지는 기본적으로 Playwright(Chromium)로 엽니다. 헤드리스 Chrome을 막는 사이트가 많으면 [Camofox Browser](https://github.com/jo-inc/camofox-browser)(Firefox 기반)를 따로 띄우고 `CAMOFOX_URL`을 넣으면 그쪽으로 엽니다.
+
+```bash
+git clone https://github.com/jo-inc/camofox-browser && cd camofox-browser
+npm install --omit=dev   # Camoufox 브라우저(약 300MB)를 함께 받음
+CAMOFOX_BIND_HOST=127.0.0.1 CAMOFOX_CRASH_REPORT_ENABLED=false npm start   # http://127.0.0.1:9377
+```
+
+```
+# apps/ai_office/.env
+CAMOFOX_URL=http://127.0.0.1:9377
+```
+
+robots.txt와 사내망 주소 차단은 그대로 적용됩니다. 다만 Camofox는 페이지가 내부에서 부르는 요청을 하나하나 막지 못해, 마지막으로 도착한 주소만 다시 확인합니다.
+
 ### 광고 변경은 승인 후 실행
 
 광고 도구로 팀원이 할 수 있는 것은 **조회**와 **변경 요청**뿐입니다. 캠페인 만들기, 켜기·끄기, 입찰가·예산 변경 같은 요청은 **승인** 탭에 쌓이고, 관리자가 **승인하고 실행**을 눌러야 요청 그대로 광고 플랫폼에 보내집니다. 카드에는 요청한 팀원, 이유, 하루 최대 비용 증가(요청자 추정), 실제로 보낼 API 요청이 보이고, 실행 뒤에는 플랫폼 응답이나 오류가 남습니다. 새로 만드는 캠페인·광고는 꺼진 상태로 만들도록 지시되어 있어, 켜는 것도 따로 승인합니다.

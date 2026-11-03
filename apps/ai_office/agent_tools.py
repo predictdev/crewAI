@@ -86,8 +86,47 @@ class _Robots:
         return self.sites[site].can_fetch(USER_AGENT, url)
 
 
+def _render_camofox(base: str, url: str) -> str:
+    """HTML from a Camofox browser server (github.com/jo-inc/camofox-browser).
+
+    Unlike the Playwright path it can't vet each request the page makes, so the
+    address the page ends up on is checked again before anything is returned.
+    """
+    base = base.rstrip("/")
+    user = {"userId": "ai-office"}
+    try:
+        with httpx.Client(timeout=60) as client:
+            response = client.post(
+                f"{base}/tabs", json={**user, "sessionKey": "fetch", "url": url}
+            )
+            response.raise_for_status()
+            tab = response.json()
+            try:
+                _check_public(tab.get("url") or url)
+                if tab.get("httpStatus", 200) >= 400:
+                    raise ToolError(
+                        f"페이지를 열지 못했습니다 (HTTP {tab['httpStatus']}): {url}"
+                    )
+                client.post(
+                    f"{base}/tabs/{tab['tabId']}/wait",
+                    json={**user, "timeout": 15000},
+                )
+                response = client.post(
+                    f"{base}/tabs/{tab['tabId']}/evaluate",
+                    json={**user, "expression": "document.documentElement.outerHTML"},
+                )
+                response.raise_for_status()
+                return response.json()["result"]
+            finally:
+                client.delete(f"{base}/tabs/{tab['tabId']}", params=user)
+    except httpx.HTTPError as e:
+        raise ToolError(f"Camofox 브라우저로 열지 못했습니다: {e}") from None
+
+
 def _render(url: str) -> str:
     """HTML after JavaScript ran, from a headless browser."""
+    if camofox := os.environ.get("CAMOFOX_URL"):
+        return _render_camofox(camofox, url)
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
