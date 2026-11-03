@@ -190,9 +190,16 @@ def _fetch(
         return _parse(url, _render(url))
     response = client.get(url)
     if response.status_code >= 400:
-        raise ToolError(
+        error = ToolError(
             f"페이지를 열지 못했습니다 (HTTP {response.status_code}): {url}"
         )
+        # Many shops refuse plain HTTP clients but serve a browser.
+        if response.status_code == 403:
+            try:
+                return _parse(url, _render(url))
+            except ToolError:
+                raise error from None
+        raise error
     kind = response.headers.get("content-type", "")
     if "html" not in kind and "text" not in kind:
         raise ToolError(f"웹페이지가 아닌 파일입니다 ({kind or '형식 모름'}): {url}")

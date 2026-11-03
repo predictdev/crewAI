@@ -66,10 +66,16 @@ def emit(event: dict[str, Any]) -> None:
         _ended.set()
 
 
+def _role(role: str) -> str:
+    # The manager names coworkers by role; with the whole instruction pasted in through
+    # {topic} it can't repeat the name exactly and delegation fails.
+    return " ".join(role.replace("{topic}", "").split()) or role
+
+
 def _agent(person: Person, **kwargs: Any) -> Agent:
     kwargs.setdefault("backstory", person.backstory)
     return Agent(
-        role=person.role,
+        role=_role(person.role),
         goal=person.goal,
         llm=LLM(model=f"anthropic/{person.model}"),
         inject_date=True,
@@ -100,7 +106,7 @@ def _tools(member: Member, run_dir: Path, order_id: str) -> list[BaseTool]:
 def _org_chart(team: Team) -> str:
     teams: dict[str, list[str]] = {}
     for m in team.members:
-        teams.setdefault(m.team, []).append(f"{m.name}({m.role}) - {m.task_name}: {m.task}")
+        teams.setdefault(m.team, []).append(f"{m.name}({_role(m.role)}) - {m.task_name}: {m.task}")
     return "\n".join(f"- {name}\n  " + "\n  ".join(people) for name, people in teams.items())
 
 
@@ -167,7 +173,7 @@ def build_crew(
 
 
 def _person(person: Person, agent: Agent, inputs: dict[str, str]) -> dict[str, Any]:
-    role = person.role
+    role = _role(person.role)
     for name, value in inputs.items():
         role = role.replace(f"{{{name}}}", value)
     return {
