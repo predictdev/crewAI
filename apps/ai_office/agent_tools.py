@@ -30,6 +30,7 @@ PAGE_CHARS = 15000  # text kept from one page
 CRAWL_CHARS = 30000  # text kept from a whole crawl
 MAX_CRAWL_PAGES = 20
 CRAWL_DELAY = 0.5  # seconds between pages of one site
+RENDER_SCROLLS = 4  # scrolls down a rendered page before reading it
 
 
 class ToolError(Exception):
@@ -110,6 +111,16 @@ def _render_camofox(base: str, url: str) -> str:
                 client.post(
                     f"{base}/tabs/{tab['tabId']}/wait",
                     json={**user, "timeout": 15000},
+                )
+                # Shops load their product lists as you scroll.
+                for _ in range(RENDER_SCROLLS):
+                    client.post(
+                        f"{base}/tabs/{tab['tabId']}/scroll",
+                        json={**user, "amount": 2500},
+                    )
+                client.post(
+                    f"{base}/tabs/{tab['tabId']}/wait",
+                    json={**user, "timeout": 5000},
                 )
                 response = client.post(
                     f"{base}/tabs/{tab['tabId']}/evaluate",
