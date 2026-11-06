@@ -116,7 +116,10 @@ CAMOFOX_BIND_HOST=127.0.0.1 CAMOFOX_CRASH_REPORT_ENABLED=false npm start   # htt
 ```
 # apps/ai_office/.env
 CAMOFOX_URL=http://127.0.0.1:9377
+CAMOFOX_DIR=/path/to/camofox-browser   # 넣으면 serve.sh가 함께 켜고 끔
 ```
+
+`CAMOFOX_DIR`을 넣으면 `serve.sh start`가 Camofox도 백그라운드로 띄우고(죽으면 3초 뒤 다시 켬), `serve.sh stop`이 함께 끕니다. 로그는 `apps/ai_office/camofox.log`입니다.
 
 robots.txt와 사내망 주소 차단은 그대로 적용됩니다. 다만 Camofox는 페이지가 내부에서 부르는 요청을 하나하나 막지 못해, 마지막으로 도착한 주소만 다시 확인합니다.
 

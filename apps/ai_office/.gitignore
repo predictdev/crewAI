@@ -6,3 +6,5 @@ data/
 supabase/.temp/
 server.log
 .serve.pid
+camofox.log
+.camofox.pid
